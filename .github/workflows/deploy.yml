@@ -1,0 +1,95 @@
+# CI/CD: every push to main is linted, tested, and - only if both pass - deployed.
+# The deploy job runs the same Makefile targets you run locally (make deploy-backend,
+# make deploy-frontend). AWS access comes from OIDC: no access keys are stored anywhere.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two deploys at once; a newer push waits instead of cancelling a running deploy.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: meetings
+          POSTGRES_PASSWORD: meetings
+          POSTGRES_DB: meetings
+        ports:
+          - 5432:5432
+        # The job starts only once Postgres answers, not merely when its container starts.
+        options: >-
+          --health-cmd "pg_isready -U meetings"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+asyncpg://meetings:meetings@localhost:5432/meetings
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: pytest
+        run: uv run pytest -v
+
+  deploy:
+    name: Deploy to AWS
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lets the job request GitHub's signed OIDC token, which AWS exchanges for the role.
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+      APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+      API_DOMAIN: ${{ vars.API_DOMAIN }}
+      HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assume the deploy role (OIDC, temporary credentials)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Builds the image, pushes it to ECR tagged with this commit's SHA, rolls ECS to it.
+      - name: make deploy-backend
+        run: make deploy-backend
+
+      # Builds the bundle, syncs it to S3, invalidates CloudFront.
+      - name: make deploy-frontend
+        run: make deploy-frontend

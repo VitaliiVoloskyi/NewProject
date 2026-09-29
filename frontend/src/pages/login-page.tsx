@@ -65,7 +65,7 @@ export function LoginPage() {
           New here?{' '}
           <Link
             to="/signup"
-            className="font-semibold text-hover underline-offset-4 hover:underline"
+            className="font-medium text-primary underline-offset-4 hover:underline"
           >
             Create an account
           </Link>
@@ -125,11 +125,7 @@ export function LoginPage() {
           {form.formState.errors.root && (
             <FieldError>{form.formState.errors.root.message}</FieldError>
           )}
-          <Button
-            type="submit"
-            className="mt-1 w-full"
-            disabled={pending || !authConfigured}
-          >
+          <Button type="submit" className="mt-1 w-full" disabled={pending || !authConfigured}>
             {login.isPending ? 'Signing in...' : 'Sign in'}
           </Button>
         </FieldGroup>

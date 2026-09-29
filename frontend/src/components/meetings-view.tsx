@@ -38,7 +38,7 @@ export function MeetingsView({
     return (
       <div className="flex flex-col gap-3">
         {Array.from({ length: 3 }, (_, i) => (
-          <Skeleton key={i} className="h-16 w-full rounded-[20px] bg-card" />
+          <Skeleton key={i} className="h-20 w-full rounded-xl border bg-card" />
         ))}
       </div>
     )
@@ -60,10 +60,12 @@ export function MeetingsView({
 
   if (meetings.data.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-4 rounded-[20px] bg-card py-20 text-center">
-        <CalendarXIcon className="size-10 stroke-1 text-primary" />
-        <h2 className="text-3xl">No meetings yet</h2>
-        <p className="font-serif text-lg text-muted-foreground italic">
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-card py-20 text-center">
+        <span className="flex size-12 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
+          <CalendarXIcon className="size-6" />
+        </span>
+        <h2 className="text-xl">No meetings yet</h2>
+        <p className="text-sm text-muted-foreground">
           Plan the first one — it only takes a minute.
         </p>
         <Button onClick={onAdd}>

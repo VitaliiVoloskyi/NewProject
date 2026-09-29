@@ -1,6 +1,7 @@
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 
+import { SpryLogo } from '@/components/app-shell'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,24 +14,52 @@ type Props = {
   footer: ReactNode
 }
 
-/** Centered card shared by the login and signup pages; tightens on short screens so it fits without scrolling. */
+/**
+ * Split screen shared by the login and signup pages: a dark Spry panel on wide screens, the
+ * form on the right. Tightens on short screens so it fits without scrolling.
+ */
 export function AuthLayout({ title, subtitle, children, footer }: Props) {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center-safe bg-[radial-gradient(ellipse_at_top,#fef4f6,transparent_60%)] px-4 py-6 short:py-3">
-      <div className="flex w-full max-w-md flex-col gap-4 short:gap-3">
-        <div className="flex flex-col items-center gap-1 text-center">
-          <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase short:hidden">
-            <span className="dot" />
-            Meetings
-            <span className="dot" />
+    <div className="grid min-h-svh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <aside className="relative hidden overflow-hidden bg-sidebar p-10 text-white lg:flex lg:flex-col">
+        <div
+          className="pointer-events-none absolute -top-40 -right-40 size-[32rem] rounded-full bg-primary/40 blur-3xl"
+          aria-hidden
+        />
+        <SpryLogo inverted className="relative" />
+        <div className="relative mt-auto flex max-w-md flex-col gap-4">
+          <p className="text-3xl leading-tight font-semibold tracking-tight">
+            Fewer, shorter, better meetings.
           </p>
-          <h1 className="text-4xl leading-tight">{title}</h1>
-          <p className="font-serif text-lg text-muted-foreground italic short:hidden">{subtitle}</p>
+          <p className="text-slate-400">
+            See the whole week at a glance, spot where the hours go, and book the next one in
+            seconds.
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            {[
+              ['12', 'meetings / week'],
+              ['−18%', 'hours vs last week'],
+              ['3.4', 'avg. attendees'],
+            ].map(([value, label]) => (
+              <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="text-xl font-semibold tabular-nums">{value}</p>
+                <p className="text-xs text-slate-400">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 rounded-[28px] bg-card px-6 py-6 sm:px-8 short:gap-3 short:py-4">
-          {children}
+      </aside>
+
+      <div className="flex flex-col items-center justify-center-safe px-4 py-6 short:py-3">
+        <div className="flex w-full max-w-sm flex-col gap-6 short:gap-3">
+          <SpryLogo className="lg:hidden short:hidden" />
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl leading-tight">{title}</h1>
+            <p className="text-sm text-muted-foreground short:hidden">{subtitle}</p>
+          </div>
+          <div className="flex flex-col gap-4 short:gap-3">{children}</div>
+          <p className="text-sm text-muted-foreground">{footer}</p>
         </div>
-        <p className="text-center text-sm text-muted-foreground">{footer}</p>
       </div>
     </div>
   )
@@ -41,7 +70,7 @@ export function OrDivider() {
   return (
     <div className="flex items-center gap-3" aria-hidden>
       <div className="hairline flex-1" />
-      <span className="font-serif text-muted-foreground italic">or</span>
+      <span className="text-xs font-medium text-muted-foreground uppercase">or</span>
       <div className="hairline flex-1" />
     </div>
   )
@@ -90,7 +119,7 @@ export function GoogleButton({
       <GoogleLogo />
       {pending ? 'Connecting to Google...' : children}
       {!enabled && (
-        <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.7rem] text-secondary-foreground">
+        <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[0.7rem] text-secondary-foreground">
           Soon
         </span>
       )}

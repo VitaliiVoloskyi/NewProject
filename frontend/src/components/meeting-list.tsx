@@ -82,7 +82,7 @@ function MeetingTitle({ meeting }: { meeting: Meeting }) {
   return (
     <button
       type="button"
-      className="rounded-sm text-left font-serif text-xl font-medium text-heading transition-colors outline-none group-hover:text-hover focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="rounded-sm text-left text-[0.95rem] font-semibold transition-colors outline-none group-hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {meeting.title}
     </button>
@@ -99,11 +99,13 @@ function MeetingRow({
   const actions = <RowActions meeting={meeting} onEdit={onEdit} onDelete={onDelete} />
   return (
     <div
-      className="group flex cursor-pointer flex-col gap-2 px-4 py-2.5 transition-colors hover:bg-muted md:grid md:grid-cols-[8rem_minmax(0,1fr)_minmax(0,12rem)_minmax(0,14rem)_auto] md:items-center md:gap-4"
+      className="group relative flex cursor-pointer flex-col gap-2 py-3 pr-3 pl-5 transition-colors before:absolute before:inset-y-3 before:left-2 before:w-1 before:rounded-full before:bg-primary/70 hover:bg-muted/60 md:grid md:grid-cols-[7.5rem_minmax(0,1fr)_minmax(0,12rem)_minmax(0,14rem)_auto] md:items-center md:gap-4"
       onClick={() => onOpen(meeting)}
     >
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold tabular-nums">{formatTimeOnDay(meeting, day)}</span>
+        <span className="text-sm font-medium text-muted-foreground tabular-nums">
+          {formatTimeOnDay(meeting, day)}
+        </span>
         <div className="md:hidden">{actions}</div>
       </div>
       <div className="flex min-w-0 flex-col items-start">
@@ -114,7 +116,10 @@ function MeetingRow({
           </p>
         )}
       </div>
-      <div className="flex min-w-0 items-center gap-1 text-sm" title={meeting.place}>
+      <div
+        className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
+        title={meeting.place}
+      >
         <MapPinIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate">{meeting.place}</span>
       </div>
@@ -135,16 +140,14 @@ function defaultStart(day: Date): Date {
 /** Agenda: every visible day gets a heading, followed by its meetings. */
 export function MeetingList({ days, meetings, onCreateAt, ...handlers }: Props) {
   return (
-    <div className="flex flex-col gap-4 pb-2">
+    <div className="flex flex-col gap-5 pb-2">
       {days.map((day) => {
         const dayMeetings = meetingsOnDay(meetings, day)
         return (
           <section key={day.toISOString()} className="flex flex-col gap-1.5">
-            <div className="flex items-baseline gap-3 px-1">
-              <h2 className="text-xl">{format(day, 'EEEE')}</h2>
-              <span className="font-serif text-muted-foreground italic">
-                {format(day, 'd MMMM')}
-              </span>
+            <div className="flex items-center gap-2 px-1">
+              <h2 className="text-sm font-semibold">{format(day, 'EEEE')}</h2>
+              <span className="text-sm text-muted-foreground">{format(day, 'd MMMM')}</span>
               {isToday(day) && <Badge>Today</Badge>}
               <Button
                 variant="ghost"
@@ -157,13 +160,13 @@ export function MeetingList({ days, meetings, onCreateAt, ...handlers }: Props) 
                 Add
               </Button>
             </div>
-            <div className="rounded-[20px] bg-card py-1">
+            <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
               {dayMeetings.length === 0 ? (
-                <p className="px-4 py-2 font-serif text-muted-foreground italic">No meetings</p>
+                <p className="px-5 py-3 text-sm text-muted-foreground">No meetings</p>
               ) : (
                 dayMeetings.map((meeting, i) => (
                   <Fragment key={meeting.id}>
-                    {i > 0 && <div className="hairline mx-4" />}
+                    {i > 0 && <div className="hairline" />}
                     <MeetingRow meeting={meeting} day={day} {...handlers} />
                   </Fragment>
                 ))

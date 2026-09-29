@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Meetings app - frontend on a private S3 bucket behind CloudFront (pay-as-you-go pricing,
-  no flat-rate plan). The app calls the backend's Lambda function URL directly. A custom
-  domain can be attached later with `make add-domain`.
+  Meetings app - frontend on a private S3 bucket behind CloudFront (pay-as-you-go pricing).
+  S3 stores the files; CloudFront serves them from edge locations over HTTPS, and is the only
+  thing allowed to read the bucket. The app calls the API on its own domain (api.<domain>).
 
 Parameters:
   ProjectName:
@@ -19,11 +19,11 @@ Parameters:
   DomainName:
     Type: String
     Default: ""
-    Description: Optional custom domain, e.g. app.example.com (set by `make add-domain`).
+    Description: Optional custom domain, e.g. app.example.com (APP_DOMAIN in .env).
   CertificateArn:
     Type: String
     Default: ""
-    Description: ACM certificate in us-east-1 covering DomainName (set by `make add-domain`).
+    Description: ACM certificate in us-east-1 covering DomainName (requested by make deploy-frontend).
   HostedZoneId:
     Type: String
     Default: ""

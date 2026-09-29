@@ -10,7 +10,7 @@ main() {
 
   require_auth_stack
   pool_id="$(output "$AUTH_STACK" UserPoolId)"
-  read -r -p "Delete stack $AUTH_STACK in $AWS_REGION (the user pool $pool_id is kept)? Type the app name to confirm: " answer
+  read -r -p "Delete stack $AUTH_STACK in $AWS_REGION (the user pool $pool_id is kept)? Type the project name to confirm: " answer
   [ "$answer" = "$PROJECT_NAME" ] || { echo "Aborted."; exit 1; }
 
   aws cloudformation delete-stack --stack-name "$AUTH_STACK"

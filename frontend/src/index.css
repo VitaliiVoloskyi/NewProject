@@ -1,20 +1,20 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/nunito-sans';
-@import '@fontsource-variable/cormorant-garamond';
+@import '@fontsource-variable/geist';
 
 @custom-variant dark (&:is(.dark *));
 /* Short viewports (small phones, landscape): the auth pages tighten up to fit one screen. */
 @custom-variant short (@media (max-height: 700px));
 
 @theme inline {
-  /* Namelaka pairs a thin display serif (Hanol) with Avenir Next; these are the closest free Cyrillic-capable matches. */
-  --font-heading: 'Cormorant Garamond Variable', Georgia, serif;
-  --font-serif: 'Cormorant Garamond Variable', Georgia, serif;
-  --font-sans: 'Nunito Sans Variable', 'Avenir Next', sans-serif;
+  /* Spry: one crisp grotesque for everything; hierarchy comes from weight and size. */
+  --font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --color-heading: var(--heading);
   --color-hover: var(--hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -56,42 +56,43 @@
 }
 
 :root {
-  /* Palette taken from namelaka.ua */
-  --background: #ffebef;
-  --foreground: #8e1500;
-  --heading: #9b6a68;
-  --hover: #ca494d;
-  --card: #fef4f6;
-  --card-foreground: #8e1500;
-  --popover: #fef4f6;
-  --popover-foreground: #8e1500;
-  --primary: #e88a92;
+  /* Spry palette: cool neutral canvas, white surfaces, one cobalt accent. */
+  --background: #f5f6f8;
+  --foreground: #0f172a;
+  --heading: #0f172a;
+  --hover: #2f4ef5;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #2f4ef5;
   --primary-foreground: #ffffff;
-  --secondary: #ffdde0;
-  --secondary-foreground: #7e4d4c;
-  --muted: #fff3ef;
-  --muted-foreground: #9b6a68;
-  --accent: #fff3ef;
-  --accent-foreground: #ca494d;
-  --destructive: #a72a53;
-  --border: #f6cacf;
-  --input: #f6cacf;
-  --ring: #e88a92;
-  --chart-1: #e88a92;
-  --chart-2: #ca494d;
-  --chart-3: #f9a67c;
-  --chart-4: #9b6a68;
-  --chart-5: #7e4d4c;
-  --radius: 1rem;
-  --sidebar: #fef4f6;
-  --sidebar-foreground: #8e1500;
-  --sidebar-primary: #e88a92;
+  --secondary: #eef1fe;
+  --secondary-foreground: #2438b8;
+  --muted: #f1f3f6;
+  --muted-foreground: #64748b;
+  --accent: #eef1fe;
+  --accent-foreground: #2438b8;
+  --destructive: #dc2626;
+  --success: #059669;
+  --warning: #d97706;
+  --border: #e4e7ec;
+  --input: #dde1e7;
+  --ring: #2f4ef5;
+  --chart-1: #2f4ef5;
+  --chart-2: #0ea5e9;
+  --chart-3: #10b981;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+  --radius: 0.625rem;
+  --sidebar: #0f172a;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-primary: #2f4ef5;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #fff3ef;
-  --sidebar-accent-foreground: #ca494d;
-  --sidebar-border: #f6cacf;
-  --sidebar-ring: #e88a92;
-  --hairline: linear-gradient(90deg, #f7dcd3, #f1d1b7 39.5%, #dfbdb4);
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1e293b;
+  --sidebar-ring: #2f4ef5;
 }
 
 .dark {
@@ -137,12 +138,13 @@
   }
   html {
     @apply font-sans;
-    scrollbar-color: #e88a92 #ffebef;
+    scrollbar-color: #cbd5e1 transparent;
+    -webkit-font-smoothing: antialiased;
   }
   h1,
   h2,
   h3 {
-    @apply font-heading font-medium text-heading;
+    @apply font-heading font-semibold tracking-tight text-heading;
   }
   ::selection {
     @apply bg-primary text-primary-foreground;
@@ -151,9 +153,5 @@
 
 @utility hairline {
   height: 1px;
-  background: var(--hairline);
-}
-
-@utility dot {
-  @apply size-[3px] shrink-0 rounded-full bg-[#b89797];
+  background: var(--border);
 }

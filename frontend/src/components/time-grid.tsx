@@ -46,7 +46,7 @@ function MeetingBlock({
       type="button"
       onClick={() => onOpen(meeting)}
       title={`${meeting.title} · ${time} · ${meeting.place}`}
-      className="absolute flex flex-col justify-start overflow-clip rounded-lg border-l-3 border-primary bg-secondary px-1.5 py-0.5 text-left text-secondary-foreground shadow-[0_0_0_1.5px_var(--card)] transition-colors outline-none hover:bg-[#ffd0d5] focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="absolute flex flex-col justify-start overflow-clip rounded-md border-l-3 border-primary bg-secondary px-1.5 py-0.5 text-left text-secondary-foreground shadow-[0_0_0_1.5px_var(--card)] transition-colors outline-none hover:bg-[#dfe5fd] focus-visible:ring-3 focus-visible:ring-ring/50"
       style={{
         top: minutesToPx(item.startMin),
         height,
@@ -56,15 +56,13 @@ function MeetingBlock({
     >
       {compact ? (
         <p className="truncate text-xs leading-4">
-          <span className="font-serif text-sm font-semibold text-heading">{meeting.title}</span>
+          <span className="text-xs font-semibold">{meeting.title}</span>
           <span className="tabular-nums">, {time}</span>
         </p>
       ) : (
         // Sticky, so a long meeting scrolled halfway out of view still shows what it is.
         <div className="sticky top-[4.5rem]">
-          <p className="truncate font-serif text-sm leading-tight font-semibold text-heading">
-            {meeting.title}
-          </p>
+          <p className="truncate text-xs leading-tight font-semibold">{meeting.title}</p>
           <p className="truncate text-xs tabular-nums">{time}</p>
           {height >= 60 && (
             <p className="truncate text-xs text-muted-foreground">{meeting.place}</p>
@@ -119,7 +117,7 @@ export function TimeGrid({ days, meetings, onOpen, onCreateAt, onPickDay }: Prop
   }
 
   return (
-    <div ref={scrollRef} className="h-full overflow-auto rounded-[20px] bg-card">
+    <div ref={scrollRef} className="h-full overflow-auto rounded-xl border bg-card shadow-xs">
       <div className={cn('relative', days.length > 1 && 'min-w-[44rem]')}>
         {/* Day headings stay visible while the hours scroll. */}
         <div
@@ -134,14 +132,14 @@ export function TimeGrid({ days, meetings, onOpen, onCreateAt, onPickDay }: Prop
                 <span
                   className={cn(
                     'text-[0.7rem] font-semibold tracking-[0.15em] text-muted-foreground uppercase',
-                    today && 'text-hover',
+                    today && 'text-primary',
                   )}
                 >
                   {format(day, 'EEE')}
                 </span>
                 <span
                   className={cn(
-                    'flex size-9 items-center justify-center rounded-full font-serif text-xl font-medium text-heading',
+                    'flex size-9 items-center justify-center rounded-full text-lg font-semibold',
                     today && 'bg-primary text-primary-foreground',
                   )}
                 >
@@ -183,7 +181,7 @@ export function TimeGrid({ days, meetings, onOpen, onCreateAt, onPickDay }: Prop
           {days.map((day, i) => (
             <div
               key={day.toISOString()}
-              className={cn('relative cursor-pointer border-l', isToday(day) && 'bg-muted/50')}
+              className={cn('relative cursor-pointer border-l', isToday(day) && 'bg-secondary/40')}
               title="Click to add a meeting"
               // Only the empty column counts; clicks on meeting blocks open the meeting instead.
               onMouseMove={(event) =>
@@ -204,7 +202,7 @@ export function TimeGrid({ days, meetings, onOpen, onCreateAt, onPickDay }: Prop
             >
               {hovered?.day === i && (
                 <div
-                  className="pointer-events-none absolute inset-x-0.5 flex items-start gap-1 rounded-lg border border-dashed border-primary bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-hover tabular-nums"
+                  className="pointer-events-none absolute inset-x-0.5 flex items-start gap-1 rounded-md border border-dashed border-primary bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary tabular-nums"
                   style={{
                     top: minutesToPx(hovered.min),
                     height: Math.min(HOUR_PX, GRID_PX - minutesToPx(hovered.min)),

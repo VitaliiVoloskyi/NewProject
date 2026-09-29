@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Meetings app - lets GitHub Actions deploy without stored AWS keys. AWS trusts GitHub's
+  OIDC provider; a workflow run gets a signed token naming its repository and branch, and
+  may exchange it (sts:AssumeRoleWithWebIdentity) for this role's temporary credentials -
+  but only if the token says repo:<GitHubRepo>:ref:refs/heads/<Branch>.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: meetings
+    AllowedPattern: "[a-z][a-z0-9-]*"
+  GitHubRepo:
+    Type: String
+    Description: owner/name of the only repository allowed to assume the role, e.g. octocat/spry
+    AllowedPattern: "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+  Branch:
+    Type: String
+    Default: main
+    Description: The only branch allowed to assume the role.
+  ExistingProviderArn:
+    Type: String
+    Default: ""
+    Description: >-
+      The account's GitHub OIDC provider, if it already exists (there can be only one per
+      account). Empty: this stack creates it.
+
+Conditions:
+  CreateProvider: !Equals [!Ref ExistingProviderArn, ""]
+
+Resources:
+  GitHubProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      # AWS verifies GitHub's certificate chain itself; the thumbprint is required by the API
+      # but not used for this provider.
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1]
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateProvider, !Ref GitHubProvider, !Ref ExistingProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                # The token was minted for AWS STS...
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # ...by a workflow in exactly this repository, on exactly this branch.
+                # A wildcard here (repo:*) would hand the account to every GitHub repository.
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/${Branch}
+      # What a deploy touches: CloudFormation, ECR, ECS, ELB, RDS, EC2/VPC, S3, CloudFront,
+      # ACM, Route 53, SSM, Cognito, Logs. PowerUserAccess covers these but not IAM, so IAM is
+      # added below and limited to roles named after this project's stacks.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: project-roles-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateRole
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*
+              # The deploy role must not be able to widen its own permissions.
+              - Effect: Deny
+                Action: iam:*
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-github-deploy
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+Outputs:
+  RoleArn:
+    Description: Put this into the repository variable AWS_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn

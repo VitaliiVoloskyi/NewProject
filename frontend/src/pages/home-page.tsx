@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { addDays } from 'date-fns'
-import { LogOutIcon, PlusIcon } from 'lucide-react'
-import { Link } from 'react-router'
+import { PlusIcon } from 'lucide-react'
 
+import { AppShell } from '@/components/app-shell'
 import { DateNavigation, ViewSwitcher } from '@/components/calendar-toolbar'
 import { DeleteMeetingDialog } from '@/components/delete-meeting-dialog'
 import { MeetingDetailsDialog } from '@/components/meeting-details-dialog'
 import { MeetingFormDialog } from '@/components/meeting-form-dialog'
 import { MeetingsView } from '@/components/meetings-view'
+import { WeekStats } from '@/components/week-stats'
 import { Button } from '@/components/ui/button'
 import { useMeetings } from '@/hooks/queries'
 import type { Meeting } from '@/lib/api'
@@ -16,7 +17,7 @@ import { STEP_DAYS, visibleDays, type ViewMode } from '@/lib/calendar'
 import { formatRange } from '@/lib/format'
 
 export function HomePage() {
-  const { user, signOut } = useAuth()
+  const { user } = useAuth()
   const meetings = useMeetings()
   const [mode, setMode] = useState<ViewMode>('list')
   const [anchor, setAnchor] = useState(() => new Date())
@@ -57,50 +58,40 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex h-svh flex-col">
-      {/* One compact bar, so the calendar gets the rest of the screen. */}
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 md:px-5">
-        <h1 className="order-1 text-3xl leading-none">Meetings</h1>
-        <div className="order-3 w-full md:order-2 md:w-auto md:flex-1">
+    <AppShell>
+      <header className="flex flex-col gap-3 px-4 pt-4 pb-3 md:px-6 md:pt-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl">Meetings</h1>
+            <p className="truncate text-sm text-muted-foreground">
+              {user ? `Welcome back, ${user.name.split(' ')[0]}.` : 'Your schedule at a glance.'}
+            </p>
+          </div>
+          <Button onClick={() => openCreate()} aria-label="Add meeting" className="max-sm:px-3">
+            <PlusIcon />
+            <span className="max-sm:hidden">New meeting</span>
+          </Button>
+        </div>
+        {meetings.data && meetings.data.length > 0 && (
+          <WeekStats
+            meetings={meetings.data}
+            anchor={anchor}
+            onOpen={openDetails}
+            className={mode === 'list' ? undefined : 'max-md:hidden'}
+          />
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <DateNavigation
             rangeLabel={formatRange(mode, days)}
             onPrev={() => setAnchor((d) => addDays(d, -STEP_DAYS[mode]))}
             onNext={() => setAnchor((d) => addDays(d, STEP_DAYS[mode]))}
             onToday={() => setAnchor(new Date())}
           />
-        </div>
-        <div className="order-2 ml-auto flex items-center gap-2 md:order-3">
           <ViewSwitcher mode={mode} onModeChange={setMode} />
-          <Button onClick={() => openCreate()} aria-label="Add meeting" className="max-sm:px-3">
-            <PlusIcon />
-            <span className="max-sm:hidden">Add meeting</span>
-          </Button>
-          {user && (
-            <div className="flex items-center gap-1">
-              <Link
-                to="/profile"
-                className="flex size-8 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                aria-label="Profile"
-                title={`${user.name} · ${user.email}\nEdit profile`}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Sign out"
-                title="Sign out"
-                onClick={signOut}
-              >
-                <LogOutIcon />
-              </Button>
-            </div>
-          )}
         </div>
       </header>
-      <div className="hairline" />
 
-      <main className="min-h-0 flex-1 p-2 md:p-3">
+      <main className="min-h-0 flex-1 px-4 pb-4 md:px-6 md:pb-6">
         <MeetingsView
           mode={mode}
           days={days}
@@ -127,6 +118,6 @@ export function HomePage() {
         onDelete={openDelete}
       />
       <DeleteMeetingDialog meeting={meetingToDelete} onClose={() => setMeetingToDelete(null)} />
-    </div>
+    </AppShell>
   )
 }

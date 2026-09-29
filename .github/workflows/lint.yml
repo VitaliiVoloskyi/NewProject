@@ -1,10 +1,10 @@
-# Style checks — mirrors `make lint`.
+# Style checks — mirrors `make lint`. Runs on pull requests; on pushes to main the deploy
+# workflow calls it before deploying.
 name: Lint
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
