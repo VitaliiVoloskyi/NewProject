@@ -42,25 +42,23 @@ make dev-frontend   # Vite on :5173, proxies /api to :8000
 
 ## Deploy to AWS
 
-Step-by-step guide (including Google sign-in): [docs/DEPLOY.md](docs/DEPLOY.md). Everything is CloudFormation in [`infra/`](infra/), driven by the Makefile:
+Step-by-step guide: [docs/DEPLOY.md](docs/DEPLOY.md). In short, everything is CloudFormation in [`infra/`](infra/), driven by the Makefile:
 
 ```
-https://xxxx.cloudfront.net  ->  CloudFront  ->  private S3 bucket (React app)
-                             ->  Lambda function URL (FastAPI container)  ->  Aurora Serverless v2 PostgreSQL
-                             ->  Cognito (email + Google)
+app.<domain>  ->  CloudFront (HTTPS, ACM cert in us-east-1)  ->  private S3 bucket
+api.<domain>  ->  Application Load Balancer (HTTPS :443, :80 redirects)  ->  ECS Fargate  ->  RDS PostgreSQL 17
 GitHub push to main  ->  lint + tests  ->  OIDC role  ->  make deploy-backend && make deploy-frontend
 ```
 
 | Command | What it does |
 |---|---|
-| `make deploy-auth` | Cognito user pool, plus Google sign-in when `GOOGLE_CLIENT_ID/SECRET` are set |
-| `make deploy-backend` | Build the image, push to ECR tagged with the commit SHA, deploy Lambda + Aurora |
+| `make deploy-auth` | Cognito user pool (once) |
+| `make deploy-backend` | Build the image, push to ECR tagged with the commit SHA, roll the ECS service |
 | `make deploy-frontend` | Build the bundle, sync to S3, invalidate CloudFront |
 | `make deploy-ci` | IAM role GitHub Actions assumes via OIDC (once) |
-| `make add-domain` | Optional custom domain for the frontend |
-| `make destroy` | Delete frontend and backend |
+| `make destroy` | Delete everything that bills by the hour |
 
-No AWS keys live in `.env` or in GitHub: locally the scripts use your `aws configure` profile, CI uses short-lived OIDC credentials. The commands are bash scripts: run them in Ubuntu, WSL or macOS, not in PowerShell.
+No AWS keys live in `.env` or in GitHub: locally the scripts use your `aws configure` profile, CI uses short-lived OIDC credentials. Every resource is tagged `PROJECT_NAME=<PROJECT_NAME>`.
 
 ## Layout
 
