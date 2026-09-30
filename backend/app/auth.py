@@ -33,7 +33,7 @@ class TokenVerifier:
         region = user_pool_id.split("_", 1)[0]
         self.issuer = f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}"
         self.client_id = client_id
-        # Keys given up front (COGNITO_JWKS, tests) are final; otherwise they are downloaded.
+        # Keys given up front (AWS) are final: the function cannot download new ones anyway.
         self._fixed = bool(jwks)
         self._jwks = jwt.PyJWKSet.from_json(jwks) if jwks else None
         self._fetched_at = 0.0

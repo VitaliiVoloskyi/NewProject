@@ -1,8 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Meetings app - TLS certificate for one custom domain, validated by DNS. Used twice: for
-  app.<domain> in us-east-1 (the only region CloudFront accepts) and for api.<domain> in the
-  load balancer's region.
+  Meetings app - TLS certificate for the custom frontend domain. CloudFront only accepts
+  ACM certificates from us-east-1, so `make add-domain` deploys this stack there.
 
 Parameters:
   ProjectName:
@@ -11,13 +10,13 @@ Parameters:
     AllowedPattern: "[a-z][a-z0-9-]*"
   DomainName:
     Type: String
-    Description: Custom domain, e.g. app.example.com or api.example.com
+    Description: Custom domain, e.g. app.example.com
   HostedZoneId:
     Type: String
     Default: ""
     Description: >-
       Optional Route 53 hosted zone of DomainName. If set, CloudFormation adds the DNS
-      validation record itself; otherwise add the record the deploy script prints.
+      validation record itself; otherwise add the record printed by `make add-domain`.
 
 Conditions:
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]

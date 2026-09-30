@@ -42,9 +42,8 @@ main() {
   echo "  AWS_ROLE_ARN    = $(output "$CI_STACK" RoleArn)"
   echo "  AWS_REGION      = $AWS_REGION"
   echo "  PROJECT_NAME    = $PROJECT_NAME"
-  echo "  APP_DOMAIN      = $APP_DOMAIN"
-  echo "  API_DOMAIN      = $API_DOMAIN"
-  echo "  HOSTED_ZONE_ID  = $HOSTED_ZONE_ID"
+  echo "  DOMAIN_NAME     = ${DOMAIN_NAME:-}   (optional)"
+  echo "  HOSTED_ZONE_ID  = ${HOSTED_ZONE_ID:-}   (optional)"
   echo
   echo "With gh:  gh variable set AWS_ROLE_ARN --body '$(output "$CI_STACK" RoleArn)'   (and so on)"
 }

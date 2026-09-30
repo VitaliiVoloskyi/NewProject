@@ -8,7 +8,7 @@ s ?=
 .DEFAULT_GOAL := help
 .PHONY: help env build up down restart logs ps migrate migration seed psql test lint format \
 	dev-backend dev-frontend install clean deploy deploy-auth deploy-backend deploy-frontend deploy-ci \
-	destroy destroy-auth destroy-backend destroy-frontend infra-lint
+	add-domain remove-domain destroy destroy-auth destroy-backend destroy-frontend infra-lint
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -77,36 +77,42 @@ clean: ## Stop the stack and delete the database volume
 
 # AWS settings come from .env locally and from repository variables in GitHub Actions.
 # Credentials never do: the AWS CLI uses your `aws configure` profile, CI an OIDC role.
-AWS_ENV := AWS_REGION="$(AWS_REGION)" AWS_PROFILE="$(AWS_PROFILE)" PROJECT_NAME="$(PROJECT_NAME)" \
-	CORS_ORIGINS_AWS="$(CORS_ORIGINS_AWS)" APP_DOMAIN="$(APP_DOMAIN)" API_DOMAIN="$(API_DOMAIN)" \
-	HOSTED_ZONE_ID="$(HOSTED_ZONE_ID)" GITHUB_REPO="$(GITHUB_REPO)" \
-	GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)"
+AWS_ENV := AWS_REGION="$(AWS_REGION)" AWS_PROFILE="$(AWS_PROFILE)" \
+	PROJECT_NAME="$(or $(PROJECT_NAME),$(APP_NAME))" CORS_ORIGINS_AWS="$(CORS_ORIGINS_AWS)" \
+	LAMBDA_MEMORY="$(LAMBDA_MEMORY)" DOMAIN_NAME="$(DOMAIN_NAME)" HOSTED_ZONE_ID="$(HOSTED_ZONE_ID)" \
+	GITHUB_REPO="$(GITHUB_REPO)" GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)"
 
 # The deploy targets are the contract: GitHub Actions runs exactly these, nothing else.
 deploy: deploy-backend deploy-frontend ## Deploy backend, then frontend (after make deploy-auth)
 
-deploy-auth: env ## Deploy Cognito (user pool + app client) and write its ids to .env (once)
+deploy-auth: env ## Deploy Cognito (+ Google sign-in if GOOGLE_* set) and write its ids to .env
 	@$(AWS_ENV) ./infra/deploy-auth.sh
 
-deploy-backend: ## Build the image, push it to ECR (tag = commit SHA), roll the ECS service
+deploy-backend: ## Build the image (tag = commit SHA), push to ECR, deploy Lambda + Aurora Serverless
 	@$(AWS_ENV) ./infra/deploy-backend.sh
 
-deploy-frontend: ## Build the bundle, sync it to S3, invalidate CloudFront
+deploy-frontend: ## Build the bundle against the Lambda URL, sync to S3, invalidate CloudFront
 	@$(AWS_ENV) ./infra/deploy-frontend.sh
 
 deploy-ci: env ## Create the IAM role GitHub Actions assumes via OIDC (once)
 	@$(AWS_ENV) ./infra/deploy-ci.sh
 
+add-domain: env ## Attach DOMAIN_NAME from .env to the deployed frontend
+	@$(AWS_ENV) ./infra/add-domain.sh
+
+remove-domain: env ## Detach the custom domain and delete its certificate
+	@$(AWS_ENV) ./infra/remove-domain.sh
+
 destroy-auth: env ## Delete the Cognito stack (the user pool and its accounts are kept)
 	@$(AWS_ENV) ./infra/destroy-auth.sh
 
-destroy-backend: env ## Delete ECS, ALB, RDS (final snapshot kept), VPC, ECR, API certificate
+destroy-backend: env ## Delete the AWS backend stacks (keeps a final DB snapshot)
 	@$(AWS_ENV) ./infra/destroy-backend.sh
 
-destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and app certificate
+destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and domain certificate
 	@$(AWS_ENV) ./infra/destroy-frontend.sh
 
-destroy: destroy-frontend destroy-backend ## Tear down everything that bills by the hour
+destroy: destroy-frontend destroy-backend ## Delete frontend and backend
 
 infra-lint: ## Lint the CloudFormation templates
 	uvx cfn-lint infra/*.yaml

@@ -68,8 +68,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       PROJECT_NAME: ${{ vars.PROJECT_NAME }}
-      APP_DOMAIN: ${{ vars.APP_DOMAIN }}
-      API_DOMAIN: ${{ vars.API_DOMAIN }}
+      DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
       HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
     steps:
       - uses: actions/checkout@v5
@@ -86,7 +85,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Builds the image, pushes it to ECR tagged with this commit's SHA, rolls ECS to it.
+      # Builds the image, pushes it to ECR tagged with this commit's SHA, points Lambda at it.
       - name: make deploy-backend
         run: make deploy-backend
 

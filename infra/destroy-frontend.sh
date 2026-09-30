@@ -11,7 +11,7 @@ main() {
 
   stack_exists "$FRONTEND_STACK" || { echo "Stack $FRONTEND_STACK not found."; exit 0; }
 
-  read -r -p "Delete stack $FRONTEND_STACK in $AWS_REGION? Type the project name to confirm: " answer
+  read -r -p "Delete stack $FRONTEND_STACK in $AWS_REGION? Type the app name to confirm: " answer
   [ "$answer" = "$PROJECT_NAME" ] || { echo "Aborted."; exit 1; }
 
   # CloudFormation cannot delete a bucket that still has objects in it.
@@ -24,10 +24,10 @@ main() {
   aws cloudformation wait stack-delete-complete --stack-name "$FRONTEND_STACK"
 
   # Only possible once no distribution uses the certificate any more.
-  if stack_exists "$APP_CERT_STACK" "$APP_CERT_REGION"; then
-    echo "==> Deleting $APP_CERT_STACK ($APP_CERT_REGION)"
-    aws cloudformation delete-stack --stack-name "$APP_CERT_STACK" --region "$APP_CERT_REGION"
-    aws cloudformation wait stack-delete-complete --stack-name "$APP_CERT_STACK" --region "$APP_CERT_REGION"
+  if stack_exists "$CERT_STACK" "$CERT_REGION"; then
+    echo "==> Deleting $CERT_STACK ($CERT_REGION)"
+    aws cloudformation delete-stack --stack-name "$CERT_STACK" --region "$CERT_REGION"
+    aws cloudformation wait stack-delete-complete --stack-name "$CERT_STACK" --region "$CERT_REGION"
   fi
   echo "Done."
 }

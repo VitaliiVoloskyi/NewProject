@@ -1,8 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Meetings app - container registry (ECR) for the backend image. Deployed before
-  backend.yaml, because the image must exist before ECS can run it. Images are tagged with
-  the git commit SHA; tags are immutable, so a tag always means the same build.
+  Meetings app - container registry for the backend image. Deployed before
+  backend.yaml, because the image must be pushed before the Lambda function can be created.
 
 Parameters:
   ProjectName:
@@ -18,17 +17,28 @@ Resources:
       ImageTagMutability: IMMUTABLE
       ImageScanningConfiguration:
         ScanOnPush: true
+      # Lets Lambda functions in this account pull the image.
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaPull
+            Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+            Condition:
+              StringLike:
+                aws:sourceArn: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*
       LifecyclePolicy:
         LifecyclePolicyText: |
           {
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Keep the 10 most recent images (enough to roll back; free tier: 500 MB)",
+                "description": "Keep the 3 most recent images (free tier: 500 MB)",
                 "selection": {
                   "tagStatus": "any",
                   "countType": "imageCountMoreThan",
-                  "countNumber": 10
+                  "countNumber": 3
                 },
                 "action": { "type": "expire" }
               }
@@ -41,5 +51,3 @@ Resources:
 Outputs:
   RepositoryUri:
     Value: !GetAtt BackendRepository.RepositoryUri
-  RepositoryName:
-    Value: !Ref BackendRepository

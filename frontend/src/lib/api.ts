@@ -42,7 +42,7 @@ export class ApiError extends Error {
   }
 }
 
-// Backend origin, set at build time for AWS (https://api.<domain>). Empty locally,
+// Backend origin, set at build time for AWS (the Lambda function URL). Empty locally,
 // where the Vite dev server or nginx proxies /api to the backend.
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
 
