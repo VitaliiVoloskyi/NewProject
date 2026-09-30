@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Meetings app - backend API on AWS Lambda (container image + Lambda Web Adapter) and its
-  PostgreSQL database on Aurora Serverless v2 (0-1 ACU, pauses when idle). The function runs
+  PostgreSQL 17 database on RDS (db.t4g.micro, free-tier eligible). The function runs
   in the database's private subnets and needs no internet access, so there is no NAT gateway.
   The database and the backend are created together.
 
@@ -40,20 +40,12 @@ Parameters:
     Type: Number
     Default: 512
     Description: Lambda memory in MB (CPU scales with it).
-  DBMinCapacity:
-    Type: Number
-    Default: 0
-    Description: Minimum Aurora capacity units; 0 lets the database pause when idle (billed for storage only).
-  DBMaxCapacity:
-    Type: Number
-    Default: 1
-    Description: Maximum Aurora capacity units (1 ACU is about 2 GB of memory).
-  DBAutoPauseSeconds:
-    Type: Number
-    Default: 300
-    MinValue: 300
-    MaxValue: 86400
-    Description: Idle time before the database pauses (only with DBMinCapacity 0).
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    Description: >-
+      db.t4g.micro is free-tier eligible (and allowed on free plan accounts, which cannot
+      create Aurora from CloudFormation).
   DBName:
     Type: String
     Default: meetings
@@ -138,49 +130,35 @@ Resources:
           Value: !Ref ProjectName
 
   Database:
-    Type: AWS::RDS::DBCluster
+    Type: AWS::RDS::DBInstance
     Metadata:
-      # cfn-lint's version list lags behind RDS; 17.11 is available (describe-db-engine-versions).
+      # cfn-lint only knows full versions; RDS accepts a major version and picks its default minor.
       cfn-lint:
         config:
-          ignore_checks: [E3690]
+          ignore_checks: [W3691]
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
-      DBClusterIdentifier: !Sub ${ProjectName}-db
-      Engine: aurora-postgresql
-      EngineVersion: "17.11"
-      # Serverless v2: scales between the capacities below; at 0 ACU it pauses when idle
-      # and resumes (in about 15 seconds) on the next connection.
-      ServerlessV2ScalingConfiguration:
-        MinCapacity: !Ref DBMinCapacity
-        MaxCapacity: !Ref DBMaxCapacity
-        SecondsUntilAutoPause: !Ref DBAutoPauseSeconds
+      DBInstanceIdentifier: !Sub ${ProjectName}-db
+      Engine: postgres
+      EngineVersion: "17"
+      AutoMinorVersionUpgrade: true
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: "20"
+      StorageType: gp2
       StorageEncrypted: true
-      DatabaseName: !Ref DBName
+      DBName: !Ref DBName
       MasterUsername: !Ref DBUser
       # SecureString created by infra/deploy-backend.sh (CloudFormation cannot create one).
       MasterUserPassword: !Sub "{{resolve:ssm-secure:/${ProjectName}/db-password}}"
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
-      VpcSecurityGroupIds: [!Ref DatabaseSecurityGroup]
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      PubliclyAccessible: false
+      MultiAZ: false
       BackupRetentionPeriod: 1
+      EnablePerformanceInsights: false
       # Snapshots (including the final one on delete) keep the PROJECT_NAME tag.
       CopyTagsToSnapshot: true
-      Tags:
-        - Key: PROJECT_NAME
-          Value: !Ref ProjectName
-
-  # A single serverless writer; the cluster's final snapshot covers the data on delete.
-  DatabaseInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: !Sub ${ProjectName}-db-1
-      DBClusterIdentifier: !Ref Database
-      Engine: aurora-postgresql
-      DBInstanceClass: db.serverless
-      PubliclyAccessible: false
-      EnablePerformanceInsights: false
-      AutoMinorVersionUpgrade: true
       Tags:
         - Key: PROJECT_NAME
           Value: !Ref ProjectName
@@ -213,8 +191,6 @@ Resources:
 
   Function:
     Type: AWS::Lambda::Function
-    # The cluster endpoint only accepts connections once its instance exists.
-    DependsOn: DatabaseInstance
     Properties:
       FunctionName: !Sub ${ProjectName}-backend
       PackageType: Image
@@ -223,7 +199,7 @@ Resources:
       # x86_64: builds natively on ordinary laptops and GitHub's runners (no ARM emulation).
       Architectures: [x86_64]
       MemorySize: !Ref MemorySize
-      # Covers a cold start: resuming a paused database + migrations check + app startup.
+      # Covers a cold start: migrations check + app startup.
       Timeout: 60
       Role: !GetAtt FunctionRole.Arn
       VpcConfig:
