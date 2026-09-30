@@ -15,6 +15,15 @@ main() {
   fi
   [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Set GITHUB_REPO=owner/name in .env" >&2; exit 1; }
 
+  # Newer repositories get OIDC subjects with immutable ids (owner@123/repo@456); look them up
+  # from GitHub's public API so the trust policy accepts that format too.
+  repo_ids="$(curl -fsS "https://api.github.com/repos/$repo" 2>/dev/null | python3 -c '
+import json, sys
+r = json.load(sys.stdin)
+print("%s@%s/%s@%s" % (r["owner"]["login"], r["owner"]["id"], r["name"], r["id"]))' 2>/dev/null || true)"
+  [ -n "$repo_ids" ] || repo_ids="$(gh api "repos/$repo" --jq '"\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"' 2>/dev/null || true)"
+  echo "    Repository ids: ${repo_ids:-not found (private repo without gh login?)}"
+
   account="$(aws sts get-caller-identity --query Account --output text)"
   provider="arn:aws:iam::$account:oidc-provider/token.actions.githubusercontent.com"
   existing=""
@@ -31,7 +40,8 @@ main() {
     --stack-name "$CI_STACK" \
     --template-file infra/github-oidc.yaml \
     --capabilities CAPABILITY_NAMED_IAM \
-    --parameter-overrides "ProjectName=$PROJECT_NAME" "GitHubRepo=$repo" "ExistingProviderArn=$existing" \
+    --parameter-overrides "ProjectName=$PROJECT_NAME" "GitHubRepo=$repo" "GitHubRepoWithIds=$repo_ids" \
+      "ExistingProviderArn=$existing" \
     --tags "${STACK_TAGS[@]}" \
     --no-fail-on-empty-changeset
 

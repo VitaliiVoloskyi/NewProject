@@ -18,6 +18,13 @@ Parameters:
     Type: String
     Default: main
     Description: The only branch allowed to assume the role.
+  GitHubRepoWithIds:
+    Type: String
+    Default: ""
+    Description: >-
+      The same repository in GitHub's newer subject format, with the immutable owner and
+      repository ids, e.g. octocat@583231/spry@1296269. GitHub sends this format for newer
+      repositories; the deploy script looks the ids up.
   ExistingProviderArn:
     Type: String
     Default: ""
@@ -27,6 +34,7 @@ Parameters:
 
 Conditions:
   CreateProvider: !Equals [!Ref ExistingProviderArn, ""]
+  HasRepoIds: !Not [!Equals [!Ref GitHubRepoWithIds, ""]]
 
 Resources:
   GitHubProvider:
@@ -58,9 +66,14 @@ Resources:
               StringEquals:
                 # The token was minted for AWS STS...
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # ...by a workflow in exactly this repository, on exactly this branch.
+                # ...by a workflow in exactly this repository, on exactly this branch (in either
+                # of GitHub's subject formats: by name, or by name plus immutable ids).
                 # A wildcard here (repo:*) would hand the account to every GitHub repository.
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/${Branch}
+                token.actions.githubusercontent.com:sub: !If
+                  - HasRepoIds
+                  - - !Sub repo:${GitHubRepo}:ref:refs/heads/${Branch}
+                    - !Sub repo:${GitHubRepoWithIds}:ref:refs/heads/${Branch}
+                  - !Sub repo:${GitHubRepo}:ref:refs/heads/${Branch}
       # What a deploy touches: CloudFormation, ECR, ECS, ELB, RDS, EC2/VPC, S3, CloudFront,
       # ACM, Route 53, SSM, Cognito, Logs. PowerUserAccess covers these but not IAM, so IAM is
       # added below and limited to roles named after this project's stacks.
