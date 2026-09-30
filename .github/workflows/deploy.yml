@@ -85,6 +85,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # The Dockerfile pulls the Lambda adapter from public.ecr.aws; anonymous pulls from shared
+      # runners hit its data limit (429 Too Many Requests), authenticated pulls do not.
+      - name: Log in to Amazon ECR Public
+        run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+
       # Builds the image, pushes it to ECR tagged with this commit's SHA, points Lambda at it.
       - name: make deploy-backend
         run: make deploy-backend
