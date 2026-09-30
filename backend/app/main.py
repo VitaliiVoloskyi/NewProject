@@ -35,4 +35,3 @@ api.include_router(me.router)
 api.include_router(meetings.router)
 api.include_router(participants.router, dependencies=[Depends(get_current_user)])
 app.include_router(api)
-import os
