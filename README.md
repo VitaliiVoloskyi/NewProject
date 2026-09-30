@@ -24,7 +24,7 @@ Run `make` to list all targets. The most used:
 |---|---|
 | `make up` / `make down` | Start / stop the stack |
 | `make logs s=backend` | Follow logs of one service |
-| `make test` | Backend tests (in the backend container, against `<db>_test`) |
+| `make test` | Backend tests (starts Postgres in Docker, runs pytest via uv against `<db>_test`) |
 | `make lint` / `make format` | Ruff + oxlint/Prettier |
 | `make migration m="..."` | Autogenerate an Alembic migration |
 | `make psql` | Open a psql shell |

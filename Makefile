@@ -49,8 +49,9 @@ seed: ## Insert sample participants and meetings
 psql: ## Open psql in the db container
 	$(COMPOSE) exec db psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
-test: ## Run backend tests (against the <db>_test database)
-	$(COMPOSE) exec backend pytest -v
+test: env ## Run backend tests locally against the <db>_test database (db runs in Docker)
+	$(COMPOSE) up -d --wait db
+	cd backend && DATABASE_URL=$(LOCAL_DATABASE_URL) uv run pytest -v
 
 lint: ## Lint backend and frontend
 	cd backend && uv run ruff check . && uv run ruff format --check .
