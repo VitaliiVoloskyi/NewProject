@@ -68,7 +68,9 @@ install: ## Install local dev dependencies (uv + npm)
 dev-backend: env ## Run backend locally with reload (db runs in Docker)
 	$(COMPOSE) up -d db
 	cd backend && DATABASE_URL=$(LOCAL_DATABASE_URL) uv run alembic upgrade head
-	cd backend && DATABASE_URL=$(LOCAL_DATABASE_URL) uv run uvicorn app.main:app --reload --port 8000
+	cd backend && DATABASE_URL=$(LOCAL_DATABASE_URL) CORS_ORIGINS="$(CORS_ORIGINS)" \
+		COGNITO_USER_POOL_ID="$(COGNITO_USER_POOL_ID)" COGNITO_CLIENT_ID="$(COGNITO_CLIENT_ID)" \
+		uv run uvicorn app.main:app --reload --port 8000
 
 dev-frontend: ## Run Vite dev server on http://localhost:5173 (proxies /api to :8000)
 	cd frontend && npm run dev
