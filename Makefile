@@ -88,7 +88,7 @@ deploy: deploy-backend deploy-frontend ## Deploy backend, then frontend (after m
 deploy-auth: env ## Deploy Cognito (+ Google sign-in if GOOGLE_* set) and write its ids to .env
 	@$(AWS_ENV) ./infra/deploy-auth.sh
 
-deploy-backend: ## Build the image (tag = commit SHA), push to ECR, deploy Lambda + Aurora Serverless
+deploy-backend: ## Build the image (tag = commit SHA), push to ECR, deploy Lambda + RDS PostgreSQL
 	@$(AWS_ENV) ./infra/deploy-backend.sh
 
 deploy-frontend: ## Build the bundle against the Lambda URL, sync to S3, invalidate CloudFront
