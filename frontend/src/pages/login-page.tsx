@@ -1,135 +1,112 @@
-import { zodResolver } from '@hookform/resolvers/zod'
-import { Controller, useForm } from 'react-hook-form'
-import { Link, useLocation, useNavigate } from 'react-router'
-import { z } from 'zod'
+import { useEffect, useRef, useState } from 'react'
+import { Link, Navigate, useLocation } from 'react-router'
+import { useAuth as useOidc } from 'react-oidc-context'
 
-import {
-  AuthLayout,
-  AuthNotConfigured,
-  GoogleButton,
-  OrDivider,
-  PasswordInput,
-} from '@/components/auth-layout'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { AuthLayout, AuthNotConfigured, GoogleButton } from '@/components/auth-layout'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import { authConfigured, NeedsConfirmationError, useGoogleLogin, useLogin } from '@/lib/auth'
+import { authConfig, authConfigured, useAuth, type SigninState } from '@/lib/auth'
 
-const loginSchema = z.object({
-  email: z.email('Enter a valid email'),
-  password: z.string().min(1, 'Enter your password'),
-})
+/** Where a signed-out visitor was headed (set by RequireAuth). */
+function useFrom(): string | undefined {
+  return (useLocation().state as SigninState | null)?.from
+}
 
-type LoginValues = z.infer<typeof loginSchema>
-
-type LocationState = {
-  /** Where the user was headed before being sent to the login page. */
-  from?: string
-  /** A message from the previous page, e.g. after confirming the email. */
-  notice?: string
-  email?: string
-} | null
-
+/**
+ * /login: sends the browser to Cognito's managed login (email and password, sign-up, and
+ * "Continue with Google") as soon as it loads. The login has to start here, not on a copied
+ * Cognito URL: the library keeps the random state and PKCE verifier that the callback checks.
+ */
 export function LoginPage() {
-  const navigate = useNavigate()
-  const state = useLocation().state as LocationState
-  const from = state?.from ?? '/home'
-  const login = useLogin()
-  const googleLogin = useGoogleLogin()
-  const pending = login.isPending || googleLogin.isPending
-  const form = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: state?.email ?? '', password: '' },
-  })
+  const { user, signIn } = useAuth()
+  const from = useFrom()
+  const [error, setError] = useState<string | null>(null)
+  const started = useRef(false)
 
-  const onError = (error: Error) => {
-    // An unverified account: finish the signup by entering the emailed code.
-    if (error instanceof NeedsConfirmationError) {
-      navigate('/signup', { state: { confirmEmail: error.email } })
-      return
-    }
-    form.setError('root', { message: error.message })
-  }
+  useEffect(() => {
+    // The ref keeps React's development double-run from starting two logins.
+    if (!authConfigured || user !== null || started.current) return
+    started.current = true
+    signIn({ from }).catch((reason: Error) => setError(reason.message))
+  }, [user, signIn, from])
 
-  const onSubmit = form.handleSubmit((values) =>
-    login.mutate(values, { onSuccess: () => navigate(from, { replace: true }), onError }),
-  )
+  if (user) return <Navigate to={from ?? '/home'} replace />
 
   return (
     <AuthLayout
-      title="Welcome back"
-      subtitle="Sign in to see your meetings."
-      footer={
-        <>
-          New here?{' '}
-          <Link
-            to="/signup"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Create an account
-          </Link>
-        </>
-      }
+      title="Sign in"
+      subtitle="Taking you to the sign-in page..."
+      footer={<>Email and password or Google, on the next page.</>}
     >
       {!authConfigured && <AuthNotConfigured />}
-      {state?.notice && (
-        <Alert>
-          <AlertDescription>{state.notice}</AlertDescription>
-        </Alert>
+      {error && (
+        <>
+          <Alert variant="destructive">
+            <AlertTitle>Could not reach the sign-in page</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+          <Button onClick={() => window.location.reload()}>Try again</Button>
+        </>
       )}
-      <GoogleButton
-        disabled={pending || !authConfigured}
-        pending={googleLogin.isPending}
-        onClick={() => googleLogin.mutate(undefined, { onError })}
+    </AuthLayout>
+  )
+}
+
+/** /auth/callback: Cognito sends the browser back here with a code; the library swaps it for tokens. */
+export function CallbackPage() {
+  const oidc = useOidc()
+
+  if (oidc.error) {
+    return (
+      <AuthLayout
+        title="Sign-in failed"
+        subtitle="Cognito sent you back without a session."
+        footer={<>If it keeps happening, open the site in a new tab and sign in from there.</>}
       >
-        Continue with Google
-      </GoogleButton>
-      <OrDivider />
-      <form onSubmit={onSubmit} noValidate>
-        <FieldGroup className="gap-4 short:gap-3">
-          <Controller
-            name="email"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="login-email">Email</FieldLabel>
-                <Input
-                  id="login-email"
-                  type="email"
-                  autoComplete="email"
-                  autoFocus
-                  aria-invalid={fieldState.invalid}
-                  {...field}
-                />
-                <FieldError errors={[fieldState.error]} />
-              </Field>
-            )}
-          />
-          <Controller
-            name="password"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="login-password">Password</FieldLabel>
-                <PasswordInput
-                  id="login-password"
-                  autoComplete="current-password"
-                  aria-invalid={fieldState.invalid}
-                  {...field}
-                />
-                <FieldError errors={[fieldState.error]} />
-              </Field>
-            )}
-          />
-          {form.formState.errors.root && (
-            <FieldError>{form.formState.errors.root.message}</FieldError>
-          )}
-          <Button type="submit" className="mt-1 w-full" disabled={pending || !authConfigured}>
-            {login.isPending ? 'Signing in...' : 'Sign in'}
-          </Button>
-        </FieldGroup>
-      </form>
+        <Alert variant="destructive">
+          <AlertDescription>{oidc.error.message}</AlertDescription>
+        </Alert>
+        <Button asChild>
+          <Link to="/login">Try again</Link>
+        </Button>
+      </AuthLayout>
+    )
+  }
+  if (oidc.isLoading) return null
+  const from = (oidc.user?.state as SigninState | undefined)?.from
+  return <Navigate to={from ?? '/home'} replace />
+}
+
+/** What signed-out visitors see instead of a page that needs an account. */
+export function SignedOutPage() {
+  const { signIn } = useAuth()
+  const from = useLocation().pathname
+  const [pending, setPending] = useState(false)
+
+  return (
+    <AuthLayout
+      title="Welcome to Spry"
+      subtitle="Sign in to see your meetings."
+      footer={<>New here? Choose “Create an account” on the sign-in page.</>}
+    >
+      {!authConfigured && <AuthNotConfigured />}
+      <Button asChild className="w-full">
+        <Link to="/login" state={{ from } satisfies SigninState}>
+          Sign in
+        </Link>
+      </Button>
+      {authConfig.googleEnabled && (
+        <GoogleButton
+          disabled={pending || !authConfigured}
+          pending={pending}
+          onClick={() => {
+            setPending(true)
+            signIn({ from, google: true }).catch(() => setPending(false))
+          }}
+        >
+          Continue with Google
+        </GoogleButton>
+      )}
     </AuthLayout>
   )
 }

@@ -1,30 +1,21 @@
 import type { ReactNode } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router'
+import { Navigate, Route, Routes } from 'react-router'
 
-import { useAuth } from '@/lib/auth'
+import { CALLBACK_PATH, useAuth } from '@/lib/auth'
 import { HomePage } from '@/pages/home-page'
-import { LoginPage } from '@/pages/login-page'
+import { CallbackPage, LoginPage, SignedOutPage } from '@/pages/login-page'
 import { ProfilePage } from '@/pages/profile-page'
-import { SignupPage } from '@/pages/signup-page'
 
-/** Sends signed-out visitors to the login page, remembering where they were going. */
+/** Shows signed-out visitors a page with the Sign in buttons instead. */
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth()
-  const location = useLocation()
-  // Still checking the stored session: render nothing rather than flash the login page.
+  // Still checking the stored session: render nothing rather than flash the signed-out page.
   if (user === undefined) return null
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (!user) return <SignedOutPage />
   return children
 }
 
-/** Login and signup make no sense once signed in. */
-function GuestOnly({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
-  if (user === undefined) return null
-  if (user) return <Navigate to="/home" replace />
-  return children
-}
-
+// Paths match with or without a trailing slash: /login and /login/ are the same page.
 export default function App() {
   return (
     <Routes>
@@ -45,22 +36,10 @@ export default function App() {
           </RequireAuth>
         }
       />
-      <Route
-        path="/login"
-        element={
-          <GuestOnly>
-            <LoginPage />
-          </GuestOnly>
-        }
-      />
-      <Route
-        path="/signup"
-        element={
-          <GuestOnly>
-            <SignupPage />
-          </GuestOnly>
-        }
-      />
+      <Route path="/login" element={<LoginPage />} />
+      {/* Cognito's managed login has its own "Create an account". */}
+      <Route path="/signup" element={<Navigate to="/login" replace />} />
+      <Route path={CALLBACK_PATH} element={<CallbackPage />} />
       <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   )

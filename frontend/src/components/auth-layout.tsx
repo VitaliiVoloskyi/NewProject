@@ -15,8 +15,8 @@ type Props = {
 }
 
 /**
- * Split screen shared by the login and signup pages: a dark Spry panel on wide screens, the
- * form on the right. Tightens on short screens so it fits without scrolling.
+ * Split screen shared by the signed-out pages: a dark Spry panel on wide screens, the content
+ * on the right. Tightens on short screens so it fits without scrolling.
  */
 export function AuthLayout({ title, subtitle, children, footer }: Props) {
   return (
@@ -61,17 +61,6 @@ export function AuthLayout({ title, subtitle, children, footer }: Props) {
           <p className="text-sm text-muted-foreground">{footer}</p>
         </div>
       </div>
-    </div>
-  )
-}
-
-/** "or" between the Google button and the form. */
-export function OrDivider() {
-  return (
-    <div className="flex items-center gap-3" aria-hidden>
-      <div className="hairline flex-1" />
-      <span className="text-xs font-medium text-muted-foreground uppercase">or</span>
-      <div className="hairline flex-1" />
     </div>
   )
 }
@@ -127,7 +116,7 @@ export function GoogleButton({
   )
 }
 
-/** Shown instead of working forms when the build has no Cognito ids. */
+/** Shown instead of working buttons when the build has no Cognito ids. */
 export function AuthNotConfigured() {
   return (
     <Alert variant="destructive">

@@ -207,24 +207,24 @@ Built with shadcn/ui components; routing with `react-router`.
 | Path | Page | Access |
 |---|---|---|
 | `/` | redirects to `/home` | — |
-| `/home` | Meetings (below) | signed in; otherwise redirect to `/login`, then back |
-| `/profile` | Profile (below) | signed in; otherwise redirect to `/login`, then back |
-| `/login` | Login | signed out; otherwise redirect to `/home` |
-| `/signup` | Signup | signed out; otherwise redirect to `/home` |
+| `/home` | Meetings (below) | signed in; otherwise a signed-out page with **Sign in** (and **Continue with Google**), then back |
+| `/profile` | Profile (below) | same as `/home` |
+| `/login` | Redirects straight to Cognito's managed login; signed in: to `/home` | anyone |
+| `/auth/callback` | Cognito returns here with a code; swapped for tokens, then back to where the user started | — |
+| `/signup` | redirects to `/login` (managed login has "Create an account") | — |
 | anything else | redirects to `/home` | — |
 
-- **Login**: "Continue with Google" button, then email + password (show/hide toggle) and **Sign in**. Link to signup.
-- **Signup**: "Sign up with Google" button, then name, email, password (min 8 characters), confirm password (must match) and **Create account**. Link to login.
+- **Sign-in** is Cognito's managed login (v2), not our own forms: email + password, sign-up with the emailed code, password reset, and **Continue with Google** all live there. The app uses `react-oidc-context` / `oidc-client-ts`: authorization code flow with PKCE from a public client; tokens in `localStorage`, renewed with the refresh token. A login must start on `/login` (the library stores the `state` and PKCE verifier that `/auth/callback` checks).
+- **Sign out** clears the local session, then goes to Cognito's `/logout?client_id=…&logout_uri=<origin>/` (Cognito has no OIDC end-session endpoint).
 - Forms use react-hook-form + zod. Errors appear under the fields; a failed request shows its message above the submit button.
 - The meetings top bar shows the user's initial (name and email on hover; links to `/profile`) and a **Sign out** button.
-- **Profile** (`/profile`): a back arrow to `/home`, the user's initial, name and email, then one card per change. The changes go to Cognito directly (Amplify); the app then refreshes the tokens, and the backend copies the new name and email from the ID token on the next request.
+- **Profile** (`/profile`): a back arrow to `/home`, the user's initial, name and email, then one card per change. The changes go to Cognito's user API directly with the access token (scope `aws.cognito.signin.user.admin`); the app then refreshes the tokens, and the backend copies the new name and email from the ID token on the next request.
   - **Name**: prefilled; **Save name** is enabled once it changes.
   - **Email**: a new email, then the code Cognito sends to it (**Verify email**, **Send a new code**, **Cancel**). The email changes only after the code is entered (`AttributesRequireVerificationBeforeUpdate` in `infra/auth.yaml`).
   - **Password**: current password, new password (min 8 characters), confirm (must match). A wrong current password shows "Current password is wrong".
   - Google accounts cannot edit anything here (Google sets the name and email at every sign-in); the page says so instead of showing the forms.
   - A **Sign out** button at the bottom.
-- Login and signup fit one screen without scrolling, down to 360×640. On short viewports (≤ 700px tall, the `short:` variant) the eyebrow and subtitle are hidden and spacing tightens. On wider screens, signup puts the password fields side by side.
-- **No auth backend yet.** `src/lib/auth.ts` (`authApi`) is a stub: every sign-in succeeds, Google returns a demo user, and the session is the user object in `localStorage` (`meetings.session`). Replace it with `/api/auth/*` calls and a redirect to Google OAuth when the backend exists. The meetings API is not protected.
+- The signed-out pages fit one screen without scrolling, down to 360×640. On short viewports (≤ 700px tall, the `short:` variant) the subtitle is hidden and spacing tightens.
 - Deep links need an `index.html` fallback: nginx has `try_files`, and CloudFront maps 403/404 to `/index.html`.
 
 ### Main page: Meetings (`/home`)

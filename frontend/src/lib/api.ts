@@ -1,6 +1,4 @@
-import { signOut } from 'aws-amplify/auth'
-
-import { getIdToken } from '@/lib/auth'
+import { forgetSession, getIdToken } from '@/lib/auth'
 
 export type Participant = {
   id: string
@@ -73,9 +71,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
 
-  // The session is gone (revoked, or the refresh token expired): sign out, which sends the
-  // user back to the login page (see AuthProvider).
-  if (response.status === 401) await signOut().catch(() => undefined)
+  // The session is gone (revoked, or the refresh token expired): forget it, which shows the
+  // signed-out page (see RequireAuth in App.tsx).
+  if (response.status === 401) await forgetSession().catch(() => undefined)
 
   if (!response.ok) {
     let detail: unknown

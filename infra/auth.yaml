@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Meetings app - Cognito user pool: sign-in with email and password (self sign-up, email
-  verification code), a public app client for the SPA, a Cognito domain for OAuth, and Google
-  as an identity provider that is created only when GoogleClientId is set.
+  verification code) or Google, both on Cognito's managed login page. A public app client for
+  the SPA (authorization code + PKCE), a Cognito domain with managed login v2, and Google as an
+  identity provider that is created only when GoogleClientId is set.
 
 Parameters:
   ProjectName:
@@ -13,8 +14,9 @@ Parameters:
     Type: CommaDelimitedList
     Default: http://localhost:5173,http://localhost:3000
     Description: >-
-      Origins of the frontend (no trailing slash). OAuth (Google) redirects back to
-      <origin>/login. Kept up to date by the infra scripts.
+      Origins of the frontend (no trailing slash). Cognito redirects back to
+      <origin>/auth/callback after sign-in and to <origin>/ after sign-out. Kept up to date by
+      the infra scripts.
   GoogleClientId:
     Type: String
     Default: ""
@@ -35,6 +37,11 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: !Sub ${ProjectName}-users
+      # Managed login needs Essentials (free up to 10,000 monthly active users).
+      UserPoolTier: ESSENTIALS
+      # Self sign-up: anyone can create an account on the managed login page.
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
       # Users sign in with their email; Cognito emails a code to verify it.
       UsernameAttributes: [email]
       AutoVerifiedAttributes: [email]
@@ -53,7 +60,7 @@ Resources:
           AttributeDataType: String
           Required: false
           Mutable: true
-      # Mirrored by the signup form (frontend/src/pages/signup-page.tsx).
+      # Mirrored by the profile page's password form (frontend/src/pages/profile-page.tsx).
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -75,12 +82,21 @@ Resources:
       UserPoolTags:
         PROJECT_NAME: !Ref ProjectName
 
-  # Hosted domain for the OAuth endpoints (needed for Google). Prefixes are global.
+  # Hosted domain for the OAuth endpoints and the managed login page. Prefixes are global.
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
       UserPoolId: !Ref UserPool
       Domain: !Sub ${ProjectName}-${AWS::AccountId}
+      ManagedLoginVersion: 2
+
+  # Without a branding style, a version 2 domain has no sign-in page to show.
+  ManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: !Ref UserPoolClient
+      UseCognitoProvidedValues: true
 
   GoogleIdentityProvider:
     Type: AWS::Cognito::UserPoolIdentityProvider
@@ -98,7 +114,8 @@ Resources:
         email_verified: email_verified
         name: name
 
-  # Public client (no secret): the SPA talks to Cognito directly with SRP.
+  # Public client (no secret): a browser cannot keep one, so the code flow is protected with
+  # PKCE instead (react-oidc-context does it).
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
@@ -122,14 +139,18 @@ Resources:
         - [COGNITO]
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
-      AllowedOAuthScopes: [openid, email, profile]
-      # "<origin>/login" for every origin: join with "/login," and append the last "/login".
+      # aws.cognito.signin.user.admin lets the profile page change the user's own name, email
+      # and password with the access token.
+      AllowedOAuthScopes: [openid, email, profile, aws.cognito.signin.user.admin]
+      # Must match the app's URLs exactly, trailing slash included.
+      # "<origin>/auth/callback" for every origin: join with "/auth/callback," and append the last.
       CallbackURLs: !Split
         - ","
-        - !Join ["", [!Join ["/login,", !Ref AppUrls], "/login"]]
+        - !Join ["", [!Join ["/auth/callback,", !Ref AppUrls], "/auth/callback"]]
+      # "<origin>/" for every origin.
       LogoutURLs: !Split
         - ","
-        - !Join ["", [!Join ["/login,", !Ref AppUrls], "/login"]]
+        - !Join ["", [!Join ["/,", !Ref AppUrls], "/"]]
 
 Outputs:
   Region:
@@ -139,7 +160,7 @@ Outputs:
   UserPoolClientId:
     Value: !Ref UserPoolClient
   Domain:
-    Description: Cognito domain for OAuth redirects (Google)
+    Description: Cognito domain of the managed login page and the OAuth endpoints
     Value: !Sub ${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
   Issuer:
     Description: Issuer of the tokens; the backend checks it

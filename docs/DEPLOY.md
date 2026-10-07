@@ -102,9 +102,9 @@ It prints and writes `COGNITO_*` into `.env`. Note **COGNITO_DOMAIN**, e.g.
    make deploy-auth      # now prints "Google sign-in: enabled", sets COGNITO_GOOGLE_ENABLED=true
    ```
 
-`.env` is gitignored; the Google secret goes to AWS (Cognito) and nowhere else. The
-"Continue with Google" button shows **Soon** until this step is done; the next frontend build
-enables it.
+`.env` is gitignored; the Google secret goes to AWS (Cognito) as a `NoEcho` parameter and
+nowhere else. Cognito's managed login shows **Continue with Google** from now on; the next
+frontend build also shows the app's own Google button on the signed-out page.
 
 ## 4. Deploy
 
@@ -126,8 +126,10 @@ App: https://d1234abcd.cloudfront.net          <- frontend URL for the submissio
 API: https://abc123.lambda-url.us-east-1.on.aws/api   <- backend URL (+ /docs)
 ```
 
-Open the app → **Create account** (email code) or **Continue with Google** → add a meeting →
-reload. Take the submission screenshot.
+Open `https://<app>/login/`: it goes straight to Cognito's managed login → **Create an account**
+(email code) or **Continue with Google** → back on the site, signed in, with your email in the
+sidebar → add a meeting → reload. Try both kinds of sign-in in private windows, with a Google
+account that is not one of your test users (proves the Google app is published).
 
 ## 5. CI/CD: deploy on every push (OIDC, no stored keys)
 
@@ -180,8 +182,10 @@ make destroy-auth   # Cognito stack (the user pool itself is kept)
 | `The AWS CLI has no working credentials` | `aws configure` in *this* terminal (Ubuntu, WSL and Windows each have their own) |
 | Google: `redirect_uri_mismatch` | The redirect URI in Google must be exactly `https://<COGNITO_DOMAIN>/oauth2/idpresponse` |
 | Google: "Access blocked / app not verified" | Add your account under Test users, or Publish the app |
-| After Google you land on login again | Run `make deploy-frontend` after `make deploy-auth`, so Cognito allows `https://<cloudfront>/login` |
-| "Continue with Google" shows **Soon** | `COGNITO_GOOGLE_ENABLED=true` must be in `.env` before the build; rebuild the frontend |
+| Cognito says `redirect_mismatch` | Run `make deploy-frontend` after `make deploy-auth`, so Cognito allows `https://<site>/auth/callback` and `https://<site>/` |
+| No **Continue with Google** on Cognito's page | `GOOGLE_CLIENT_ID/SECRET` were empty at `make deploy-auth`; set them and run it again |
+| Google: "Access blocked" for other people | The Google app is still in **Testing**; publish it (Audience → **Publish app**) |
+| Callback page: "No matching state found in storage" | The login started on a copied Cognito URL; start it on `/login/` instead |
 | Meetings don't load, CORS error | Deploy the frontend after the backend (it adds its address to CORS) |
 | Deploy job: not authorized for AssumeRoleWithWebIdentity | `GITHUB_REPO` did not match the repository, or the push wasn't to `main`; `make deploy-ci` again |
 
