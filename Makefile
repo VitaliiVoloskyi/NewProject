@@ -111,7 +111,7 @@ report-now: env ## Build and email a report on demand: make report-now WEEK=2026
 	@$(AWS_ENV) ./infra/report-now.sh
 
 report-logs: env ## Show the last hour of report-builder and report-mailer logs
-	@$(AWS_ENV) sh -c 'for f in report-builder report-mailer; do echo "== $$f"; \
+	@$(AWS_ENV) bash -c 'source infra/common.sh; for f in report-builder report-mailer; do echo "== $$f"; \
 		aws logs tail /$${PROJECT_NAME}/$$f --since 1h --format short; done'
 
 deploy-ci: env ## Create the IAM role GitHub Actions assumes via OIDC (once)
