@@ -8,7 +8,8 @@ s ?=
 .DEFAULT_GOAL := help
 .PHONY: help env build up down restart logs ps migrate migration seed psql test lint format \
 	dev-backend dev-frontend install clean deploy deploy-auth deploy-backend deploy-frontend deploy-ci \
-	add-domain remove-domain destroy destroy-auth destroy-backend destroy-frontend infra-lint
+	add-domain remove-domain destroy destroy-auth destroy-backend destroy-frontend infra-lint \
+	report-local deploy-reports report-now report-logs destroy-reports
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -75,6 +76,10 @@ dev-backend: env ## Run backend locally with reload (db runs in Docker)
 dev-frontend: ## Run Vite dev server on http://localhost:5173 (proxies /api to :8000)
 	cd frontend && npm run dev
 
+report-local: env ## Print a week's report CSV from the local database: make report-local WEEK=2026-W40
+	$(COMPOSE) up -d --wait db
+	cd backend && DATABASE_URL=$(LOCAL_DATABASE_URL) uv run python -m app.reports.weekly $(WEEK)
+
 clean: ## Stop the stack and delete the database volume
 	$(COMPOSE) down -v
 
@@ -83,7 +88,9 @@ clean: ## Stop the stack and delete the database volume
 AWS_ENV := AWS_REGION="$(AWS_REGION)" AWS_PROFILE="$(AWS_PROFILE)" \
 	PROJECT_NAME="$(or $(PROJECT_NAME),$(APP_NAME))" CORS_ORIGINS_AWS="$(CORS_ORIGINS_AWS)" \
 	LAMBDA_MEMORY="$(LAMBDA_MEMORY)" DOMAIN_NAME="$(DOMAIN_NAME)" HOSTED_ZONE_ID="$(HOSTED_ZONE_ID)" \
-	GITHUB_REPO="$(GITHUB_REPO)" GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)"
+	GITHUB_REPO="$(GITHUB_REPO)" GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
+	REPORTS_RECIPIENTS="$(REPORTS_RECIPIENTS)" REPORTS_DOMAIN="$(REPORTS_DOMAIN)" \
+	REPORTS_SCHEDULE="$(REPORTS_SCHEDULE)" REPORTS_BREAK_WEEK="$(REPORTS_BREAK_WEEK)" WEEK="$(WEEK)"
 
 # The deploy targets are the contract: GitHub Actions runs exactly these, nothing else.
 deploy: deploy-backend deploy-frontend ## Deploy backend, then frontend (after make deploy-auth)
@@ -97,6 +104,16 @@ deploy-backend: ## Build the image (tag = commit SHA), push to ECR, deploy Lambd
 deploy-frontend: ## Build the bundle against the Lambda URL, sync to S3, invalidate CloudFront
 	@$(AWS_ENV) ./infra/deploy-frontend.sh
 
+deploy-reports: env ## Weekly report: schedule, SQS queue, S3 bucket, builder + mailer Lambdas, SES
+	@$(AWS_ENV) ./infra/deploy-reports.sh
+
+report-now: env ## Build and email a report on demand: make report-now WEEK=2026-W39 (default: last week)
+	@$(AWS_ENV) ./infra/report-now.sh
+
+report-logs: env ## Show the last hour of report-builder and report-mailer logs
+	@$(AWS_ENV) sh -c 'for f in report-builder report-mailer; do echo "== $$f"; \
+		aws logs tail /$${PROJECT_NAME}/$$f --since 1h --format short; done'
+
 deploy-ci: env ## Create the IAM role GitHub Actions assumes via OIDC (once)
 	@$(AWS_ENV) ./infra/deploy-ci.sh
 
@@ -109,13 +126,16 @@ remove-domain: env ## Detach the custom domain and delete its certificate
 destroy-auth: env ## Delete the Cognito stack (the user pool and its accounts are kept)
 	@$(AWS_ENV) ./infra/destroy-auth.sh
 
+destroy-reports: env ## Delete the weekly report stack and its reports
+	@$(AWS_ENV) ./infra/destroy-reports.sh
+
 destroy-backend: env ## Delete the AWS backend stacks (keeps a final DB snapshot)
 	@$(AWS_ENV) ./infra/destroy-backend.sh
 
 destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and domain certificate
 	@$(AWS_ENV) ./infra/destroy-frontend.sh
 
-destroy: destroy-frontend destroy-backend ## Delete frontend and backend
+destroy: destroy-frontend destroy-reports destroy-backend ## Delete frontend, reports and backend
 
 infra-lint: ## Lint the CloudFormation templates
 	uvx cfn-lint infra/*.yaml

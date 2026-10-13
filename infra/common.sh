@@ -21,6 +21,7 @@ AUTH_STACK="$PROJECT_NAME-auth"
 CERT_STACK="$PROJECT_NAME-certificate"
 CERT_REGION="us-east-1"
 CI_STACK="$PROJECT_NAME-github-oidc"
+REPORTS_STACK="$PROJECT_NAME-reports"
 
 # Every resource is tagged PROJECT_NAME=<PROJECT_NAME>: explicitly in the templates, via the
 # stack tags (which also cover resources CloudFormation creates implicitly), and by the
@@ -32,6 +33,17 @@ STACK_TAGS=("$TAG_KEY=$PROJECT_NAME")
 output() {
   aws cloudformation describe-stacks --stack-name "$1" --region "${3:-$AWS_REGION}" \
     --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" --output text
+}
+
+# image_tag: the backend image tag: the git SHA, plus a timestamp when backend/ has uncommitted
+# changes (ECR tags are immutable).
+image_tag() {
+  local tag
+  tag="$(git rev-parse --short HEAD)"
+  if [ -n "$(git status --porcelain -- backend)" ]; then
+    tag="$tag-dirty-$(date +%Y%m%d%H%M%S)"
+  fi
+  echo "$tag"
 }
 
 # stack_exists STACK [REGION]

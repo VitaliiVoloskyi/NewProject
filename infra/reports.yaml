@@ -1,0 +1,456 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Meetings app - weekly meetings report. EventBridge Scheduler (and make report-now) put a
+  request on an SQS queue; the report-builder Lambda, in the backend's VPC, reads the database
+  and writes reports/<week>.csv to S3 through a gateway endpoint. The new object triggers the
+  report-mailer Lambda, outside the VPC, which emails the file through SES. Neither function
+  calls the other. Deployed by `make deploy-reports` after `make deploy-backend`.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: meetings
+    AllowedPattern: "[a-z][a-z0-9-]*"
+  ImageUri:
+    Type: String
+    Description: >-
+      The backend image built at its `app` target (no Lambda Web Adapter); pushed by the
+      deploy script next to the API image.
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: The API function's DATABASE_URL, copied by the deploy script.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The backend stack's VPC (output VpcId).
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: The backend stack's private subnets (output PrivateSubnetIds).
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: The API function's security group, which the database already admits.
+  RouteTableId:
+    Type: String
+    Description: The private subnets' route table (output PrivateRouteTableId).
+  Recipients:
+    Type: String
+    AllowedPattern: ".+@.+"
+    Description: >-
+      Comma-separated addresses the report goes to. In the SES sandbox each must be a verified
+      identity; the deploy script requests the verification emails.
+  SenderDomain:
+    Type: String
+    Default: ""
+    Description: >-
+      Domain to send from as reports@<domain>, verified here with DKIM. Empty: the first
+      recipient sends to itself, which the sandbox allows once that address is verified.
+  HostedZoneId:
+    Type: String
+    Default: ""
+    Description: Route 53 zone of SenderDomain; if set, the DKIM records are created here.
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 7 ? * MON *)
+    Description: When the report is built. Use rate(5 minutes) to test, then set it back.
+  ReportTimezone:
+    Type: String
+    Default: Europe/Kyiv
+    Description: The schedule's time zone, and where report weeks start and end.
+  BreakWeek:
+    Type: String
+    Default: ""
+    Description: For the DLQ exercise only - the builder fails every request for this week.
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref SenderDomain, ""]]
+  CreateDkimRecords: !And [!Condition HasDomain, !Not [!Equals [!Ref HostedZoneId, ""]]]
+
+Resources:
+  # --------------------------------------------------------------- Storage
+  # Explicitly named: the mailer's invoke permission needs the bucket's ARN, and the bucket
+  # needs that permission before it can add the notification. !GetAtt Bucket.Arn would make
+  # that a circular dependency; a constructed name does not.
+  Bucket:
+    Type: AWS::S3::Bucket
+    DependsOn: MailerS3Permission
+    Properties:
+      BucketName: !Sub ${ProjectName}-reports-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: delete-old-reports
+            Status: Enabled
+            Prefix: reports/
+            ExpirationInDays: 90
+      # Trigger 3: a new report is an event. The mailer listens; the builder does not know it.
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt Mailer.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: reports/
+                  - Name: suffix
+                    Value: .csv
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # The builder has no internet access (no NAT). A gateway endpoint gives its subnets a route
+  # to S3, free of charge; without it PutObject hangs until the function times out.
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Gateway
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcId: !Ref VpcId
+      RouteTableIds: [!Ref RouteTableId]
+
+  # ----------------------------------------------------------------- Queue
+  RequestsDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${ProjectName}-report-requests-dlq
+      MessageRetentionPeriod: 1209600 # 14 days, the maximum: time to notice and redrive
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # Trigger 2. One entry point for every request (schedule, make report-now, later the API).
+  Requests:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${ProjectName}-report-requests
+      # 6x the builder's timeout: a message must not reappear while an attempt still runs,
+      # or a second builder starts on the same report.
+      VisibilityTimeout: 360
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RequestsDlq.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # ------------------------------------------------------------ Schedule
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: send-report-requests
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt Requests.Arn
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # Trigger 1: a command, BuildWeeklyReport, every Monday at 07:00 Kyiv time. Without the time
+  # zone the cron runs in UTC and the report arrives at 9 or 10 depending on daylight saving.
+  WeeklySchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub ${ProjectName}-weekly-report
+      Description: Requests last week's meetings report
+      ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: !Ref ReportTimezone
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: !GetAtt Requests.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        # No week: the builder takes the previous full ISO week.
+        Input: '{"week": null, "source": "schedule"}'
+
+  # --------------------------------------------------------------- Builder
+  BuilderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /${ProjectName}/report-builder
+      RetentionInDays: 14
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  BuilderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # Network interfaces in the VPC + CloudWatch Logs.
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        # The Lambda service polls the queue on the function's behalf: the function itself
+        # never connects to SQS, which is why it works without a NAT.
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+      Policies:
+        - PolicyName: write-reports
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${ProjectName}-reports-${AWS::AccountId}/reports/*
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # The backend's code and models, built without the web adapter, with a plain handler.
+  Builder:
+    Type: AWS::Lambda::Function
+    DependsOn: S3Endpoint
+    Properties:
+      FunctionName: !Sub ${ProjectName}-report-builder
+      Description: Builds reports/<week>.csv from the database
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: ["app.reports.lambda_handler.handler"]
+      Architectures: [x86_64]
+      MemorySize: 512
+      # Leaves room for a cold start and a slow database; the queue's visibility timeout is 6x.
+      Timeout: 60
+      Role: !GetAtt BuilderRole.Arn
+      VpcConfig:
+        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds: [!Ref SecurityGroupId]
+      LoggingConfig:
+        LogGroup: !Ref BuilderLogGroup
+        # JSON lines: the fields passed with extra= (trigger, week, ...) become searchable keys.
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          REPORTS_BUCKET: !Sub ${ProjectName}-reports-${AWS::AccountId}
+          REPORT_TIMEZONE: !Ref ReportTimezone
+          REPORT_BREAK_WEEK: !Ref BreakWeek
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  BuilderQueueMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref Builder
+      EventSourceArn: !GetAtt Requests.Arn
+      BatchSize: 1
+      # Backpressure: at most two builders at once, whatever lands in the queue, so a burst of
+      # requests waits instead of using up the database's connections or Lambda's concurrency.
+      ScalingConfig:
+        MaximumConcurrency: 2
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # ---------------------------------------------------------------- Mailer
+  MailerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /${ProjectName}/report-mailer
+      RetentionInDays: 14
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # Read-only on reports/: a function triggered by uploads to a prefix must never upload there,
+  # or it triggers itself forever.
+  MailerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-reports-send-email
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${ProjectName}-reports-${AWS::AccountId}/reports/*
+              # In the sandbox SES checks the sender's and the recipients' identities.
+              - Effect: Allow
+                Action: [ses:SendEmail, ses:SendRawEmail]
+                Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # Outside the VPC: normal internet access to SES, and no way to reach the database.
+  Mailer:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-report-mailer
+      Description: Emails each new reports/*.csv through SES
+      Runtime: python3.14
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt MailerRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref MailerLogGroup
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+      Environment:
+        Variables:
+          SENDER: !If
+            - HasDomain
+            - !Sub Meetings reports <reports@${SenderDomain}>
+            - !Select [0, !Split [",", !Ref Recipients]]
+          RECIPIENTS: !Ref Recipients
+      Code:
+        ZipFile: |
+          import logging
+          import os
+          import urllib.parse
+          from email.message import EmailMessage
+
+          import boto3
+
+          log = logging.getLogger("report-mailer")
+          log.setLevel(logging.INFO)
+          s3 = boto3.client("s3")
+          ses = boto3.client("sesv2")
+
+
+          def handler(event, context):
+              recipients = [a.strip() for a in os.environ["RECIPIENTS"].split(",") if a.strip()]
+              for record in event["Records"]:
+                  bucket = record["s3"]["bucket"]["name"]
+                  # Keys arrive URL-encoded in S3 events ("a b.csv" -> "a+b.csv").
+                  key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])
+                  log.info(
+                      "report-mailer triggered",
+                      extra={
+                          "trigger": "s3" if record.get("eventSource") == "aws:s3" else "direct",
+                          "event": record.get("eventName"),
+                          "bucket": bucket,
+                          "key": key,
+                      },
+                  )
+                  report = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+                  week = key.rsplit("/", 1)[-1].removesuffix(".csv")
+
+                  msg = EmailMessage()
+                  msg["Subject"] = f"Weekly meetings report {week}"
+                  msg["From"] = os.environ["SENDER"]
+                  msg["To"] = ", ".join(recipients)
+                  msg.set_content(
+                      f"Hello,\n\nThe meetings report for {week} is attached.\n\n"
+                      f"It is kept in s3://{bucket}/{key} for 90 days.\n"
+                  )
+                  msg.add_attachment(
+                      report, maintype="text", subtype="csv", filename=f"meetings-{week}.csv"
+                  )
+                  sent = ses.send_email(
+                      FromEmailAddress=os.environ["SENDER"],
+                      Destination={"ToAddresses": recipients},
+                      Content={"Raw": {"Data": msg.as_bytes()}},
+                  )
+                  log.info(
+                      "report emailed",
+                      extra={"key": key, "recipients": recipients, "message_id": sent["MessageId"]},
+                  )
+      Tags:
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  # Only S3 events from this account's reports bucket may invoke the mailer.
+  MailerS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Mailer
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:s3:::${ProjectName}-reports-${AWS::AccountId}
+      SourceAccount: !Ref AWS::AccountId
+
+  # ------------------------------------------------------------------- SES
+  # Verified once the three DKIM CNAMEs (outputs) exist at the domain's DNS provider.
+  # Recipient addresses are verified by the deploy script (one identity per address).
+  DomainIdentity:
+    Type: AWS::SES::EmailIdentity
+    Condition: HasDomain
+    Properties:
+      EmailIdentity: !Ref SenderDomain
+
+  DkimRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Condition: CreateDkimRecords
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - Name: !GetAtt DomainIdentity.DkimDNSTokenName1
+          Type: CNAME
+          TTL: "1800"
+          ResourceRecords: [!GetAtt DomainIdentity.DkimDNSTokenValue1]
+        - Name: !GetAtt DomainIdentity.DkimDNSTokenName2
+          Type: CNAME
+          TTL: "1800"
+          ResourceRecords: [!GetAtt DomainIdentity.DkimDNSTokenValue2]
+        - Name: !GetAtt DomainIdentity.DkimDNSTokenName3
+          Type: CNAME
+          TTL: "1800"
+          ResourceRecords: [!GetAtt DomainIdentity.DkimDNSTokenValue3]
+
+Outputs:
+  BucketName:
+    Value: !Ref Bucket
+  QueueUrl:
+    Description: Where make report-now sends its requests
+    Value: !Ref Requests
+  DeadLetterQueueUrl:
+    Value: !Ref RequestsDlq
+  BuilderFunctionName:
+    Value: !Ref Builder
+  MailerFunctionName:
+    Value: !Ref Mailer
+  BuilderLogGroup:
+    Value: !Ref BuilderLogGroup
+  MailerLogGroup:
+    Value: !Ref MailerLogGroup
+  Sender:
+    Value: !If
+      - HasDomain
+      - !Sub reports@${SenderDomain}
+      - !Select [0, !Split [",", !Ref Recipients]]
+  DkimRecords:
+    Condition: HasDomain
+    Description: CNAME records to add at the DNS provider of SenderDomain
+    Value: !Join
+      - " | "
+      - - !Sub "${DomainIdentity.DkimDNSTokenName1} CNAME ${DomainIdentity.DkimDNSTokenValue1}"
+        - !Sub "${DomainIdentity.DkimDNSTokenName2} CNAME ${DomainIdentity.DkimDNSTokenValue2}"
+        - !Sub "${DomainIdentity.DkimDNSTokenName3} CNAME ${DomainIdentity.DkimDNSTokenValue3}"

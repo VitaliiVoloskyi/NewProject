@@ -9,6 +9,10 @@ main() {
   cd "$(dirname "$0")/.."
   source infra/common.sh
 
+  if stack_exists "$REPORTS_STACK"; then
+    echo "Stack $REPORTS_STACK uses the backend's network; run make destroy-reports first." >&2
+    exit 1
+  fi
   if stack_exists "$FRONTEND_STACK"; then
     echo "Note: $FRONTEND_STACK still exists; the app will fail to load data until you run make destroy-frontend."
   fi

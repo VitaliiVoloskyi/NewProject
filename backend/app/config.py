@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # The pool's jwks.json. Set on AWS, where the function has no internet access; locally the
     # keys are downloaded on first use.
     cognito_jwks: str = ""
+    # Weekly report (app.reports): weeks run Monday to Sunday in this time zone, and the
+    # Lambda builder writes reports/<week>.csv into this bucket.
+    report_timezone: str = "Europe/Kyiv"
+    reports_bucket: str = ""
     cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:5173",
         "http://localhost:3000",

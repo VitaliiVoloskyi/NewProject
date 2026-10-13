@@ -13,11 +13,7 @@ main() {
   LAMBDA_MEMORY="${LAMBDA_MEMORY:-512}"
   PASSWORD_PARAM="/$PROJECT_NAME/db-password"
 
-  # Git SHA, plus a timestamp when backend/ has uncommitted changes (ECR tags are immutable).
-  TAG="$(git rev-parse --short HEAD)"
-  if [ -n "$(git status --porcelain -- backend)" ]; then
-    TAG="$TAG-dirty-$(date +%Y%m%d%H%M%S)"
-  fi
+  TAG="$(image_tag)"
 
   account="$(aws sts get-caller-identity --query Account --output text)"
   echo "==> Deploying '$PROJECT_NAME' backend $TAG to account $account in $AWS_REGION"
@@ -87,17 +83,28 @@ main() {
 
   # The first request after a deploy is a cold start: migrations check + app startup.
   echo "==> [5/5] Wait for $api_url/health"
+  healthy=""
   for _ in $(seq 24); do
     if curl -fsS --max-time 30 "$api_url/health" >/dev/null 2>&1; then
-      echo
-      echo "API:  $api_url"
-      echo "Docs: $(output "$BACKEND_STACK" DocsUrl)"
-      exit 0
+      healthy=1
+      break
     fi
     sleep 5
   done
-  echo "Backend did not become healthy. Logs: aws logs tail /$PROJECT_NAME/backend --follow" >&2
-  exit 1
+  if [ -z "$healthy" ]; then
+    echo "Backend did not become healthy. Logs: aws logs tail /$PROJECT_NAME/backend --follow" >&2
+    exit 1
+  fi
+
+  # The report builder runs the same code; ship it with every backend deploy once it exists.
+  if stack_exists "$REPORTS_STACK"; then
+    echo "==> Report builder ($REPORTS_STACK)"
+    ./infra/deploy-reports.sh
+  fi
+
+  echo
+  echo "API:  $api_url"
+  echo "Docs: $(output "$BACKEND_STACK" DocsUrl)"
 }
 
 main "$@"

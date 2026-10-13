@@ -95,6 +95,30 @@ Resources:
         - Key: PROJECT_NAME
           Value: !Ref ProjectName
 
+  # Only the local route: there is no internet gateway or NAT. Explicit (rather than the VPC's
+  # main table) so the reports stack can attach its S3 gateway endpoint to it.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private
+        - Key: PROJECT_NAME
+          Value: !Ref ProjectName
+
+  PrivateSubnetARouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
   # --------------------------------------------------------- Security groups
   FunctionSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -270,3 +294,12 @@ Outputs:
     Value: !GetAtt Database.Endpoint.Address
   LogGroup:
     Value: !Ref LogGroup
+  # The network the report builder (infra/reports.yaml) shares with the API.
+  VpcId:
+    Value: !Ref Vpc
+  PrivateSubnetIds:
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB]]
+  PrivateRouteTableId:
+    Value: !Ref PrivateRouteTable
+  FunctionSecurityGroupId:
+    Value: !Ref FunctionSecurityGroup

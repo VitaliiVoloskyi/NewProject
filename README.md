@@ -56,9 +56,11 @@ GitHub push to main  ->  lint + tests  ->  OIDC role  ->  make deploy-backend &&
 | `make deploy-auth` | Cognito user pool, plus Google sign-in when `GOOGLE_CLIENT_ID/SECRET` are set |
 | `make deploy-backend` | Build the image, push to ECR tagged with the commit SHA, deploy Lambda + RDS |
 | `make deploy-frontend` | Build the bundle, sync to S3, invalidate CloudFront |
+| `make deploy-reports` | Weekly meetings report: schedule → SQS → builder Lambda → S3 → mailer Lambda → SES ([docs/REPORTS.md](docs/REPORTS.md)) |
+| `make report-now WEEK=2026-W39` | Build and email one week's report on demand |
 | `make deploy-ci` | IAM role GitHub Actions assumes via OIDC (once) |
 | `make add-domain` | Optional custom domain for the frontend |
-| `make destroy` | Delete frontend and backend |
+| `make destroy` | Delete frontend, reports and backend |
 
 No AWS keys live in `.env` or in GitHub: locally the scripts use your `aws configure` profile, CI uses short-lived OIDC credentials. The commands are bash scripts: run them in Ubuntu, WSL or macOS, not in PowerShell.
 
