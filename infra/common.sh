@@ -22,6 +22,7 @@ CERT_STACK="$PROJECT_NAME-certificate"
 CERT_REGION="us-east-1"
 CI_STACK="$PROJECT_NAME-github-oidc"
 REPORTS_STACK="$PROJECT_NAME-reports"
+AI_STACK="$PROJECT_NAME-ai"
 
 # Every resource is tagged PROJECT_NAME=<PROJECT_NAME>: explicitly in the templates, via the
 # stack tags (which also cover resources CloudFormation creates implicitly), and by the
@@ -78,6 +79,27 @@ update_backend_cors() {
     --template-file infra/backend.yaml \
     --capabilities CAPABILITY_IAM \
     --parameter-overrides "CorsOrigins=$origins" \
+    --tags "${STACK_TAGS[@]}" \
+    --no-fail-on-empty-changeset
+  update_ai_cors
+}
+
+# ai_cors_origins: the sites allowed to call the agenda parser: the API's origins plus the local
+# dev servers (the parser has no local version; `make dev-frontend` calls the deployed one).
+ai_cors_origins() {
+  echo "$(cors_origins),http://localhost:5173,http://localhost:3000" | tr ',' '\n' | awk 'NF && !seen[$0]++' |
+    paste -sd, -
+}
+
+# update_ai_cors: points the agenda parser's CORS at the current frontend addresses, once its
+# stack exists. Every other parser parameter keeps its previous value.
+update_ai_cors() {
+  stack_exists "$AI_STACK" || return 0
+  aws cloudformation deploy \
+    --stack-name "$AI_STACK" \
+    --template-file infra/ai.yml \
+    --capabilities CAPABILITY_IAM \
+    --parameter-overrides "CorsOrigins=$(ai_cors_origins)" \
     --tags "${STACK_TAGS[@]}" \
     --no-fail-on-empty-changeset
 }

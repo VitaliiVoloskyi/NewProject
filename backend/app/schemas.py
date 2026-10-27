@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from pydantic import (
@@ -7,6 +7,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     EmailStr,
+    Field,
     StringConstraints,
     field_serializer,
     model_validator,
@@ -62,6 +63,35 @@ class MeetingCreate(BaseModel):
         return self
 
 
+class AgendaItem(BaseModel):
+    topic: Annotated[NonEmptyStr, StringConstraints(max_length=300)]
+    owner: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
+    minutes: int | None = Field(default=None, ge=1, le=480)
+
+
+class ActionItem(BaseModel):
+    task: Annotated[NonEmptyStr, StringConstraints(max_length=300)]
+    owner: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
+    due: date | None = None
+
+
+class Agenda(BaseModel):
+    items: list[AgendaItem] = Field(default=[], max_length=50)
+    action_items: list[ActionItem] = Field(default=[], max_length=50)
+
+
+class AiSuggestion(BaseModel):
+    """What the agenda parser returned, kept as it was: it is compared, never trusted."""
+
+    agenda: dict
+    model: Annotated[str, StringConstraints(max_length=100)]
+    prompt_version: Annotated[str, StringConstraints(max_length=50)]
+
+
+class AgendaSave(Agenda):
+    ai_suggestion: AiSuggestion | None = None
+
+
 class MeetingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,6 +102,7 @@ class MeetingRead(BaseModel):
     ends_at: datetime
     place: str
     participants: list[ParticipantRead]
+    agenda: Agenda | None = None
     created_at: datetime
 
     @field_serializer("starts_at", "ends_at", "created_at")

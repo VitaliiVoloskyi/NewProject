@@ -101,6 +101,11 @@ main() {
     echo "==> Report builder ($REPORTS_STACK)"
     ./infra/deploy-reports.sh
   fi
+  # So does the agenda parser.
+  if stack_exists "$AI_STACK"; then
+    echo "==> Agenda parser ($AI_STACK)"
+    ./infra/deploy-ai.sh
+  fi
 
   echo
   echo "API:  $api_url"

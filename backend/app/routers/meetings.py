@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import CurrentUser
 from app.db import SessionDep
 from app.models import Meeting, Participant, User
-from app.schemas import MeetingCreate, MeetingRead
+from app.schemas import AgendaSave, MeetingCreate, MeetingRead
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
@@ -85,6 +85,23 @@ async def update_meeting(
     meeting.starts_at = payload.starts_at
     meeting.ends_at = payload.ends_at
     meeting.place = payload.place
+    await session.commit()
+    session.expunge(meeting)
+    return await _get_meeting(session, meeting_id, user)
+
+
+@router.put("/{meeting_id}/agenda", response_model=MeetingRead)
+async def save_agenda(
+    meeting_id: uuid.UUID, payload: AgendaSave, session: SessionDep, user: CurrentUser
+) -> Meeting:
+    """Saves the agenda, typed by hand or checked after the parser suggested it. Only this
+    endpoint writes agendas: the parser never does. An empty agenda removes it."""
+    meeting = await _get_meeting(session, meeting_id, user)
+    agenda = payload.model_dump(mode="json", exclude={"ai_suggestion"})
+    meeting.agenda = agenda if agenda["items"] or agenda["action_items"] else None
+    meeting.agenda_ai_suggestion = (
+        payload.ai_suggestion.model_dump(mode="json") if payload.ai_suggestion else None
+    )
     await session.commit()
     session.expunge(meeting)
     return await _get_meeting(session, meeting_id, user)

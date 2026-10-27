@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     # Lambda builder writes reports/<week>.csv into this bucket.
     report_timezone: str = "Europe/Kyiv"
     reports_bucket: str = ""
+    # Claude model on Bedrock that parses pasted agendas (app.ai).
+    parser_model: str = "anthropic.claude-opus-5-5"
     cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:5173",
         "http://localhost:3000",

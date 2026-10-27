@@ -9,7 +9,8 @@ s ?=
 .PHONY: help env build up down restart logs ps migrate migration seed psql test lint format \
 	dev-backend dev-frontend install clean deploy deploy-auth deploy-backend deploy-frontend deploy-ci \
 	add-domain remove-domain destroy destroy-auth destroy-backend destroy-frontend infra-lint \
-	report-local deploy-reports report-now report-logs destroy-reports
+	report-local deploy-reports report-now report-logs destroy-reports llm-hello parse parse-eval \
+	deploy-ai parser-logs destroy-ai
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -80,6 +81,13 @@ report-local: env ## Print a week's report CSV from the local database: make rep
 	$(COMPOSE) up -d --wait db
 	cd backend && DATABASE_URL=$(LOCAL_DATABASE_URL) uv run python -m app.reports.weekly $(WEEK)
 
+llm-hello: env ## Ask Claude on Bedrock one question; prints the answer, stop_reason and usage
+	@$(AWS_ENV) bash -c 'source infra/common.sh; cd backend && uv run python -m app.ai.hello'
+
+parse: env ## Parse an agenda with Claude on Bedrock: make parse TEXT="Mon 10:00, pricing sync..."
+	@$(AWS_ENV) TEXT="$(TEXT)" bash -c 'source infra/common.sh; \
+		cd backend && uv run python -m app.ai.agenda "$$TEXT"'
+
 clean: ## Stop the stack and delete the database volume
 	$(COMPOSE) down -v
 
@@ -90,6 +98,7 @@ AWS_ENV := AWS_REGION="$(AWS_REGION)" AWS_PROFILE="$(AWS_PROFILE)" \
 	LAMBDA_MEMORY="$(LAMBDA_MEMORY)" DOMAIN_NAME="$(DOMAIN_NAME)" HOSTED_ZONE_ID="$(HOSTED_ZONE_ID)" \
 	GITHUB_REPO="$(GITHUB_REPO)" GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
 	REPORTS_RECIPIENTS="$(REPORTS_RECIPIENTS)" REPORTS_DOMAIN="$(REPORTS_DOMAIN)" \
+	PARSER_MODEL="$(PARSER_MODEL)" BUDGET_EMAIL="$(BUDGET_EMAIL)" \
 	REPORTS_SCHEDULE="$(REPORTS_SCHEDULE)" REPORTS_BREAK_WEEK="$(REPORTS_BREAK_WEEK)" WEEK="$(WEEK)"
 
 # The deploy targets are the contract: GitHub Actions runs exactly these, nothing else.
@@ -114,6 +123,15 @@ report-logs: env ## Show the last hour of report-builder and report-mailer logs
 	@$(AWS_ENV) bash -c 'source infra/common.sh; for f in report-builder report-mailer; do echo "== $$f"; \
 		aws logs tail /$${PROJECT_NAME}/$$f --since 1h --format short; done'
 
+parse-eval: env ## Run the five test inputs of the lab; prints table rows (tokens, cost, latency)
+	@$(AWS_ENV) bash -c 'source infra/common.sh; cd backend && uv run python -m app.ai.evaluate'
+
+deploy-ai: env ## Paste an agenda: the parser Lambda (Claude on Bedrock), its URL, a budget alarm
+	@$(AWS_ENV) ./infra/deploy-ai.sh
+
+parser-logs: env ## Show the last hour of agenda-parser logs (one JSON line per parse)
+	@$(AWS_ENV) bash -c 'source infra/common.sh; aws logs tail /$${PROJECT_NAME}/agenda-parser --since 1h --format short'
+
 deploy-ci: env ## Create the IAM role GitHub Actions assumes via OIDC (once)
 	@$(AWS_ENV) ./infra/deploy-ci.sh
 
@@ -129,13 +147,16 @@ destroy-auth: env ## Delete the Cognito stack (the user pool and its accounts ar
 destroy-reports: env ## Delete the weekly report stack and its reports
 	@$(AWS_ENV) ./infra/destroy-reports.sh
 
+destroy-ai: env ## Delete the agenda parser stack and the budget alarm
+	@$(AWS_ENV) ./infra/destroy-ai.sh
+
 destroy-backend: env ## Delete the AWS backend stacks (keeps a final DB snapshot)
 	@$(AWS_ENV) ./infra/destroy-backend.sh
 
 destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and domain certificate
 	@$(AWS_ENV) ./infra/destroy-frontend.sh
 
-destroy: destroy-frontend destroy-reports destroy-backend ## Delete frontend, reports and backend
+destroy: destroy-frontend destroy-ai destroy-reports destroy-backend ## Delete frontend, parser, reports and backend
 
 infra-lint: ## Lint the CloudFormation templates
-	uvx cfn-lint infra/*.yaml
+	uvx cfn-lint infra/*.yaml infra/*.yml

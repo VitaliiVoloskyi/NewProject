@@ -58,6 +58,8 @@ GitHub push to main  ->  lint + tests  ->  OIDC role  ->  make deploy-backend &&
 | `make deploy-frontend` | Build the bundle, sync to S3, invalidate CloudFront |
 | `make deploy-reports` | Weekly meetings report: schedule → SQS → builder Lambda → S3 → mailer Lambda → SES ([docs/REPORTS.md](docs/REPORTS.md)) |
 | `make report-now WEEK=2026-W39` | Build and email one week's report on demand |
+| `make deploy-ai` | Paste an agenda: parser Lambda (Claude on Bedrock) + function URL + $5 budget alarm ([docs/AGENDA-PARSER.md](docs/AGENDA-PARSER.md)) |
+| `make parse TEXT="..."` / `make parse-eval` | Parse one text, or the five test inputs, from your laptop |
 | `make deploy-ci` | IAM role GitHub Actions assumes via OIDC (once) |
 | `make add-domain` | Optional custom domain for the frontend |
 | `make destroy` | Delete frontend, reports and backend |

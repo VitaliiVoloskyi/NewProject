@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Column,
     DateTime,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -73,6 +75,13 @@ class Meeting(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # {"items": [...], "action_items": [...]} as the user saved it; None until there is one.
+    agenda: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB(), "postgresql"))
+    # What the agenda parser suggested before the user corrected it, with its model and prompt
+    # version: the difference to `agenda` is the parser's quality signal.
+    agenda_ai_suggestion: Mapped[dict | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
 
     participants: Mapped[list[Participant]] = relationship(
         secondary=meeting_participants,
