@@ -2,14 +2,14 @@
 
 ## 1. Commit
 
-Link: `https://github.com/<owner>/<repo>/commit/<sha>`, the commit that adds
+https://github.com/VitaliiVoloskyi/NewProject/commit/b5fad99e4501d23ad0d5ff53506771a167bc6b3c, the commit that adds
 `backend/app/ai/agenda.py`, `infra/ai.yml`, the Paste an agenda screen
 (`frontend/src/components/agenda-dialog.tsx`) and
 [`docs/adr/0006-llm-agenda-parsing.md`](adr/0006-llm-agenda-parsing.md).
 
 ## 2. Screen recording
 
-`docs/lab6-paste-agenda.gif` (≤ 45 s): paste the text → Parse → the pre-filled form with
+`docs/lab6-paste-agenda.mp4` (≤ 45 s), recorded at https://d7qg7pyr3qt78.cloudfront.net: paste the text → Parse → the pre-filled form with
 "suggested" badges → correct one field (its badge disappears) → Save agenda → the agenda shows on
 the meeting.
 
@@ -45,8 +45,11 @@ mistakes in inputs 3 and 4, which are faults of the schema rather than of the mo
 `make parser-logs`, after a parse in the deployed app:
 
 ```json
-(paste one "agenda_parsed" line here: model, prompt_version, input_tokens, output_tokens, latency_ms, cost_usd)
+{"timestamp": "2026-10-27T14:10:48Z", "level": "INFO", "message": "agenda_parsed", "logger": "agenda-parser", "requestId": "402195d6-a0dc-4a0a-bd53-e0fa65631944", "user": "64e854e8-c051-7019-0fdc-f1d54e73ca15", "model": "us.anthropic.claude-opus-4-5-20251101-v1:0", "prompt_version": "agenda-v1", "input_tokens": 1375, "output_tokens": 187, "chars": 320, "items": 4, "latency_ms": 4150, "cost_usd": 0.01155}
 ```
+
+A parse from the deployed app, from `/spry/agenda-parser`. The Lambda's own report for the same
+request shows a cold start: init 4.1 s and 8.4 s billed.
 
 ## 5. Answers
 

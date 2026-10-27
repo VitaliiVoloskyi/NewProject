@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { format } from 'date-fns'
+import { format, isValid } from 'date-fns'
 import { Loader2Icon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -97,12 +97,19 @@ function toAgenda(items: ItemRow[], actions: ActionRow[]): Agenda | string {
   return agenda
 }
 
+/** A suggested start as a date, or as the model wrote it when that is not a date ("2026-11-03
+ * after lunch"): model output is never trusted to be well-formed. */
+function formatSuggestedStart(value: string): string {
+  const date = new Date(value)
+  return isValid(date) ? format(date, 'EEE d MMM, HH:mm') : value
+}
+
 /** What else the model found in the text, shown as a hint: the meeting itself is edited with
  * Edit, not here. */
 function meetingHint({ agenda }: AiSuggestion): string | null {
   const parts = [
     agenda.title && `"${agenda.title}"`,
-    agenda.starts_at && format(new Date(agenda.starts_at), 'EEE d MMM, HH:mm'),
+    agenda.starts_at && formatSuggestedStart(agenda.starts_at),
     agenda.duration_minutes && `${agenda.duration_minutes} min`,
   ].filter(Boolean)
   return parts.length ? parts.join(' · ') : null
