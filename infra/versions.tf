@@ -26,10 +26,12 @@ terraform {
 provider "aws" {
   region = var.region
 
-  # Every resource that accepts tags gets PROJECT_NAME (Lab 4's rule) without repeating it.
+  # Every resource that accepts tags gets PROJECT_NAME (Lab 4's rule) without repeating it, and
+  # ManagedBy, so a resource found in the console says where its description lives.
   default_tags {
     tags = {
       PROJECT_NAME = var.project_name
+      ManagedBy    = "terraform"
     }
   }
 }

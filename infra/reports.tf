@@ -308,10 +308,13 @@ resource "aws_iam_role_policy" "mailer" {
   })
 }
 
+# The zip records the file's mode. Pinned, so a laptop (umask 002) and HCP Terraform's checkout
+# (0644) build the same zip, and the same code is not re-uploaded on every other run.
 data "archive_file" "mailer" {
-  type        = "zip"
-  source_file = "${path.module}/functions/report-mailer/index.py"
-  output_path = "${path.module}/.build/report-mailer.zip"
+  type             = "zip"
+  source_file      = "${path.module}/functions/report-mailer/index.py"
+  output_path      = "${path.module}/.build/report-mailer.zip"
+  output_file_mode = "0644"
 }
 
 # Outside the VPC: normal internet access to SES, and no way to reach the database.
