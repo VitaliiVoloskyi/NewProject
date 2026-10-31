@@ -9,8 +9,9 @@ main() {
   cd "$(dirname "$0")/.."
   source infra/common.sh
 
-  if stack_exists "$REPORTS_STACK"; then
-    echo "Stack $REPORTS_STACK uses the backend's network; run make destroy-reports first." >&2
+  if function_exists "$REPORT_BUILDER"; then
+    echo "$REPORT_BUILDER (infra/reports.tf) uses the backend's network; destroy the Terraform" >&2
+    echo "resources first (HCP Terraform: Settings → Destruction and Deletion)." >&2
     exit 1
   fi
   if stack_exists "$FRONTEND_STACK"; then

@@ -7,10 +7,10 @@ s ?=
 
 .DEFAULT_GOAL := help
 .PHONY: help env build up down restart logs ps migrate migration seed psql test lint format \
-	dev-backend dev-frontend install clean deploy deploy-auth deploy-backend deploy-frontend deploy-ci \
-	add-domain remove-domain destroy destroy-auth destroy-backend destroy-frontend infra-lint \
-	report-local deploy-reports report-now report-logs destroy-reports llm-hello parse parse-eval \
-	deploy-ai parser-logs destroy-ai
+	dev-backend dev-frontend install clean deploy deploy-backend deploy-frontend deploy-ci \
+	add-domain remove-domain destroy destroy-backend destroy-frontend infra-lint infra-init infra-plan \
+	infra-output auth-env deploy-functions verify-recipients report-local report-now report-logs \
+	llm-hello parse parse-eval parser-logs
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -96,16 +96,30 @@ clean: ## Stop the stack and delete the database volume
 AWS_ENV := AWS_REGION="$(AWS_REGION)" AWS_PROFILE="$(AWS_PROFILE)" \
 	PROJECT_NAME="$(or $(PROJECT_NAME),$(APP_NAME))" CORS_ORIGINS_AWS="$(CORS_ORIGINS_AWS)" \
 	LAMBDA_MEMORY="$(LAMBDA_MEMORY)" DOMAIN_NAME="$(DOMAIN_NAME)" HOSTED_ZONE_ID="$(HOSTED_ZONE_ID)" \
-	GITHUB_REPO="$(GITHUB_REPO)" GOOGLE_CLIENT_ID="$(GOOGLE_CLIENT_ID)" GOOGLE_CLIENT_SECRET="$(GOOGLE_CLIENT_SECRET)" \
-	REPORTS_RECIPIENTS="$(REPORTS_RECIPIENTS)" REPORTS_DOMAIN="$(REPORTS_DOMAIN)" \
-	PARSER_MODEL="$(PARSER_MODEL)" BUDGET_EMAIL="$(BUDGET_EMAIL)" \
-	REPORTS_SCHEDULE="$(REPORTS_SCHEDULE)" REPORTS_BREAK_WEEK="$(REPORTS_BREAK_WEEK)" WEEK="$(WEEK)"
+	GITHUB_REPO="$(GITHUB_REPO)" REPORTS_RECIPIENTS="$(REPORTS_RECIPIENTS)" \
+	PARSER_MODEL="$(PARSER_MODEL)" WEEK="$(WEEK)"
+
+# Cognito, the weekly report and the agenda parser are Terraform in infra/*.tf. Their state and
+# runs live in HCP Terraform: a pull request gets a plan, a merge to main applies it. There is
+# no apply target on purpose. The targets below need an HCP Terraform token (`terraform login`).
+TF := terraform -chdir=infra
+
+infra-init: ## Connect infra/ to its HCP Terraform workspace and download the providers
+	$(TF) init -input=false
+
+infra-plan: ## Speculative plan of infra/*.tf in HCP Terraform (changes nothing)
+	@test -d infra/.terraform || $(TF) init -input=false >/dev/null
+	$(TF) plan
+
+infra-output: ## Show the outputs of infra/*.tf (Cognito ids, parser URL, queue, bucket, ...)
+	@test -d infra/.terraform || $(TF) init -input=false >/dev/null
+	$(TF) output
+
+auth-env: env ## Write the Cognito ids and the parser URL from Terraform's outputs to .env
+	@$(AWS_ENV) ./infra/auth-env.sh
 
 # The deploy targets are the contract: GitHub Actions runs exactly these, nothing else.
-deploy: deploy-backend deploy-frontend ## Deploy backend, then frontend (after make deploy-auth)
-
-deploy-auth: env ## Deploy Cognito (+ Google sign-in if GOOGLE_* set) and write its ids to .env
-	@$(AWS_ENV) ./infra/deploy-auth.sh
+deploy: deploy-backend deploy-frontend ## Deploy backend (+ builder and parser code), then frontend
 
 deploy-backend: ## Build the image (tag = commit SHA), push to ECR, deploy Lambda + RDS PostgreSQL
 	@$(AWS_ENV) ./infra/deploy-backend.sh
@@ -113,8 +127,11 @@ deploy-backend: ## Build the image (tag = commit SHA), push to ECR, deploy Lambd
 deploy-frontend: ## Build the bundle against the Lambda URL, sync to S3, invalidate CloudFront
 	@$(AWS_ENV) ./infra/deploy-frontend.sh
 
-deploy-reports: env ## Weekly report: schedule, SQS queue, S3 bucket, builder + mailer Lambdas, SES
-	@$(AWS_ENV) ./infra/deploy-reports.sh
+deploy-functions: env ## Ship the backend's code to the report builder and the agenda parser
+	@$(AWS_ENV) ./infra/deploy-functions.sh
+
+verify-recipients: env ## Send SES verification links to REPORTS_RECIPIENTS (the SES sandbox needs them)
+	@$(AWS_ENV) ./infra/verify-recipients.sh
 
 report-now: env ## Build and email a report on demand: make report-now WEEK=2026-W39 (default: last week)
 	@$(AWS_ENV) ./infra/report-now.sh
@@ -125,9 +142,6 @@ report-logs: env ## Show the last hour of report-builder and report-mailer logs
 
 parse-eval: env ## Run the five test inputs of the lab; prints table rows (tokens, cost, latency)
 	@$(AWS_ENV) bash -c 'source infra/common.sh; cd backend && uv run python -m app.ai.evaluate'
-
-deploy-ai: env ## Paste an agenda: the parser Lambda (Claude on Bedrock), its URL, a budget alarm
-	@$(AWS_ENV) ./infra/deploy-ai.sh
 
 parser-logs: env ## Show the last hour of agenda-parser logs (one JSON line per parse)
 	@$(AWS_ENV) bash -c 'source infra/common.sh; aws logs tail /$${PROJECT_NAME}/agenda-parser --since 1h --format short'
@@ -141,22 +155,16 @@ add-domain: env ## Attach DOMAIN_NAME from .env to the deployed frontend
 remove-domain: env ## Detach the custom domain and delete its certificate
 	@$(AWS_ENV) ./infra/remove-domain.sh
 
-destroy-auth: env ## Delete the Cognito stack (the user pool and its accounts are kept)
-	@$(AWS_ENV) ./infra/destroy-auth.sh
-
-destroy-reports: env ## Delete the weekly report stack and its reports
-	@$(AWS_ENV) ./infra/destroy-reports.sh
-
-destroy-ai: env ## Delete the agenda parser stack and the budget alarm
-	@$(AWS_ENV) ./infra/destroy-ai.sh
-
 destroy-backend: env ## Delete the AWS backend stacks (keeps a final DB snapshot)
 	@$(AWS_ENV) ./infra/destroy-backend.sh
 
 destroy-frontend: env ## Delete the S3 bucket, CloudFront distribution and domain certificate
 	@$(AWS_ENV) ./infra/destroy-frontend.sh
 
-destroy: destroy-frontend destroy-ai destroy-reports destroy-backend ## Delete frontend, parser, reports and backend
+# Terraform's resources are destroyed in HCP Terraform (a destroy run), not from here.
+destroy: destroy-frontend destroy-backend ## Delete frontend and backend (destroy infra/*.tf first)
 
-infra-lint: ## Lint the CloudFormation templates
-	uvx cfn-lint infra/*.yaml infra/*.yml
+infra-lint: ## Lint the CloudFormation templates and the Terraform files
+	uvx cfn-lint infra/*.yaml
+	terraform fmt -check -recursive infra
+	$(TF) init -backend=false -input=false >/dev/null && $(TF) validate

@@ -79,6 +79,14 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      # The deploy reads Terraform's outputs (Cognito ids, the parser's URL) from HCP Terraform.
+      # Infrastructure itself is applied by HCP Terraform after the merge, never from here.
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          # The wrapper adds its own lines to stdout, which breaks `terraform output -raw`.
+          terraform_wrapper: false
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -90,7 +98,8 @@ jobs:
       - name: Log in to Amazon ECR Public
         run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
-      # Builds the image, pushes it to ECR tagged with this commit's SHA, points Lambda at it.
+      # Builds the image, pushes it to ECR tagged with this commit's SHA, points Lambda at it,
+      # then ships the same code to the report builder and the agenda parser.
       - name: make deploy-backend
         run: make deploy-backend
 

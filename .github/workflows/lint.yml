@@ -37,6 +37,21 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check --diff .
 
+  terraform:
+    name: Terraform (fmt + validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff infra
+
+      # No backend: validate checks the files only and needs no HCP Terraform token or AWS access.
+      - name: terraform validate
+        run: terraform -chdir=infra init -backend=false -input=false && terraform -chdir=infra validate
+
   frontend:
     name: Frontend (oxlint + Prettier)
     runs-on: ubuntu-latest
