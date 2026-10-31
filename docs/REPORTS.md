@@ -23,8 +23,8 @@ make report-now ────────┤  {"week": "2026-W39", "source": "mak
 |---|---|
 | The report (plain Python, no AWS) | [`backend/app/reports/weekly.py`](../backend/app/reports/weekly.py) |
 | Builder handler (schedule / SQS / direct) | [`backend/app/reports/lambda_handler.py`](../backend/app/reports/lambda_handler.py) |
-| Mailer handler (S3 event) | inline in [`infra/reports.yaml`](../infra/reports.yaml) |
-| Infrastructure | [`infra/reports.yaml`](../infra/reports.yaml), [`infra/deploy-reports.sh`](../infra/deploy-reports.sh) |
+| Mailer handler (S3 event) | [`infra/functions/report-mailer/index.py`](../infra/functions/report-mailer/index.py) |
+| Infrastructure (Terraform, applied by HCP Terraform) | [`infra/reports.tf`](../infra/reports.tf); the builder's code: [`infra/deploy-functions.sh`](../infra/deploy-functions.sh) |
 | Tests | [`backend/tests/test_reports.py`](../backend/tests/test_reports.py) |
 
 The week is always a parameter (`2026-W40`, Monday to Sunday in Europe/Kyiv). The handler, not
@@ -44,12 +44,14 @@ make report-local WEEK=2026-W40   # the CSV from your local compose database, no
 
 On AWS, after `make deploy-backend`:
 
-1. Set `REPORTS_RECIPIENTS=you@example.com` in `.env` (and optionally `REPORTS_DOMAIN`).
-2. `make deploy-reports`. The first run emails each recipient a verification link from AWS.
-   Open it: the SES sandbox only delivers to verified addresses.
-3. With `REPORTS_DOMAIN` set: add the three DKIM CNAMEs it prints at your DNS provider (made
-   automatically when `HOSTED_ZONE_ID` is the domain's Route 53 zone). Without a domain the
-   report is sent from your verified address to itself.
+1. Set the workspace variable `report_recipients=you@example.com` in HCP Terraform (and
+   optionally `report_sender_domain` in `infra/terraform.tfvars`). The next apply creates or
+   updates the report's resources.
+2. `make verify-recipients` (with `REPORTS_RECIPIENTS` in `.env`) emails each recipient a
+   verification link from AWS. Open it: the SES sandbox only delivers to verified addresses.
+3. With a sender domain: add the three DKIM CNAMEs (`terraform output dkim_records`) at your DNS
+   provider (made automatically when `hosted_zone_id` is the domain's Route 53 zone). Without a
+   domain the report is sent from your verified address to itself.
 
 From then on `make deploy-backend`, locally or in CI, also ships the builder's new code.
 
@@ -58,12 +60,12 @@ From then on `make deploy-backend`, locally or in CI, also ships the builder's n
 | `make report-now WEEK=2026-W39` | Puts a request on the queue (default: last week) |
 | `make report-logs` | The last hour of builder and mailer logs |
 | `aws s3 ls s3://<project>-reports-<account>/reports/ --recursive` | The saved reports |
-| `make destroy-reports` | Deletes the stack and its reports (run before `make destroy-backend`) |
+| Settings: schedule, time zone, break week | `report_*` in `infra/terraform.tfvars`, through a pull request |
 
 ## The submission checklist
 
-1. **The schedule.** Set `REPORTS_SCHEDULE=rate(5 minutes)`, `make deploy-reports`, wait for a
-   run, then empty it again and redeploy (back to `cron(0 7 ? * MON *)`).
+1. **The schedule.** Set `report_schedule = "rate(5 minutes)"` in `infra/terraform.tfvars`,
+   merge, wait for a run, then remove it again (back to `cron(0 7 ? * MON *)`).
 2. **On demand.** `make report-now WEEK=<last week>`. Within a minute you get a new object, a
    builder line with `"trigger": "sqs"`, a mailer line with `"trigger": "s3"` and an email.
 3. **The bucket.** `aws s3 ls s3://<bucket>/reports/ --recursive` now lists both reports.
@@ -85,10 +87,10 @@ From then on `make deploy-backend`, locally or in CI, also ships the builder's n
      --payload '{"source": "schedule", "week": null}' --cli-binary-format raw-in-base64-out /dev/stdout
    ```
 
-5. **Breaking it (DLQ).** `REPORTS_BREAK_WEEK=2026-W13`, `make deploy-reports`,
+5. **Breaking it (DLQ).** `report_break_week = "2026-W13"` in `infra/terraform.tfvars`, merge,
    `make report-now WEEK=2026-W13`. After three attempts (the visibility timeout is 6 minutes,
-   so allow about 20 minutes) the message is in `spry-report-requests-dlq`. Empty the variable,
-   redeploy, then in the SQS console: the DLQ → **Start DLQ redrive**.
+   so allow about 20 minutes) the message is in `spry-report-requests-dlq`. Remove the variable,
+   merge, then in the SQS console: the DLQ → **Start DLQ redrive**.
 6. **The same week twice.** `make report-now` twice for one week gives **two emails**. The
    builder is idempotent: the second run overwrites the same `reports/<week>.csv`. But every
    PutObject, including an overwrite, is a new `ObjectCreated:Put` event, and sending an email

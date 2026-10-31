@@ -21,7 +21,7 @@ person decides.
 | Lambda handler (auth, limits, errors, the log line) | [`backend/app/ai/agenda_lambda.py`](../backend/app/ai/agenda_lambda.py) |
 | Saving: `PUT /api/meetings/{id}/agenda` | [`backend/app/routers/meetings.py`](../backend/app/routers/meetings.py), migration `0003` |
 | The screen | [`frontend/src/components/agenda-dialog.tsx`](../frontend/src/components/agenda-dialog.tsx) |
-| Infrastructure (+ the $5 budget alarm) | [`infra/ai.yml`](../infra/ai.yml), [`infra/deploy-ai.sh`](../infra/deploy-ai.sh) |
+| Infrastructure (+ the $5 budget alarm; Terraform, applied by HCP Terraform) | [`infra/ai.tf`](../infra/ai.tf); the parser's code: [`infra/deploy-functions.sh`](../infra/deploy-functions.sh) |
 | Tests (the model is faked) | [`backend/tests/test_agenda.py`](../backend/tests/test_agenda.py) |
 | Decision record | [`docs/adr/0006-llm-agenda-parsing.md`](adr/0006-llm-agenda-parsing.md) |
 
@@ -41,14 +41,14 @@ make parse TEXT="Пн 10:00, синк по прайсингу, 45 хв. 1) но�
 make parse TEXT="..." PARSER_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
 make parse-eval                      # the five test inputs of the lab, as table rows
 
-# .env: BUDGET_EMAIL=<your email>  (AWS Budgets emails you above $5 a month)
-make deploy-ai                       # parser Lambda + function URL + budget (after deploy-backend)
-make deploy-frontend                 # the app is rebuilt with the parser's URL
+# The parser, its URL and the budget are infra/ai.tf: HCP Terraform applies them after a merge.
+# parser_model is in infra/terraform.tfvars, budget_email is a workspace variable.
+make deploy-frontend                 # the app is rebuilt with the parser's URL (a Terraform output)
 make parser-logs                     # one JSON line per parse: tokens, latency, cost
 ```
 
-`make deploy-backend` (and CI) redeploys the parser with the new code once its stack exists.
-For `make dev-frontend`, set `VITE_PARSER_URL` in `.env` to the URL `make deploy-ai` prints.
+`make deploy-backend` (and CI) ships the parser's new code (`make deploy-functions`).
+For `make dev-frontend`, `make auth-env` writes the parser's URL to `VITE_PARSER_URL` in `.env`.
 
 ## What the parser answers
 

@@ -23,7 +23,7 @@ main() {
   if stack_exists "$BACKEND_STACK"; then
     update_backend_cors
   fi
-  update_auth_urls
+  check_app_urls
 
   echo "==> [3/3] Delete the certificate ($CERT_STACK in $CERT_REGION)"
   if stack_exists "$CERT_STACK" "$CERT_REGION"; then

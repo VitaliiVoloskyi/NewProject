@@ -9,7 +9,8 @@ main() {
   cd "$(dirname "$0")/.."
   source infra/common.sh
 
-  require_auth_stack
+  # Fails early, with Terraform's message, when Cognito (infra/auth.tf) is not there yet.
+  tf_output cognito_user_pool_id >/dev/null
   LAMBDA_MEMORY="${LAMBDA_MEMORY:-512}"
   PASSWORD_PARAM="/$PROJECT_NAME/db-password"
 
@@ -54,10 +55,10 @@ main() {
   fi
 
   echo "==> [4/5] Lambda + database ($BACKEND_STACK)"
-  pool_id="$(output "$AUTH_STACK" UserPoolId)"
-  client_id="$(output "$AUTH_STACK" UserPoolClientId)"
+  pool_id="$(tf_output cognito_user_pool_id)"
+  client_id="$(tf_output cognito_client_id)"
   # The function has no internet access, so it gets the token signing keys up front.
-  jwks="$(curl -fsS "$(output "$AUTH_STACK" Issuer)/.well-known/jwks.json" \
+  jwks="$(curl -fsS "$(tf_output cognito_issuer)/.well-known/jwks.json" \
     | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin), separators=(",", ":")))')"
   echo "    Cognito: $pool_id (client $client_id)"
   # Includes the frontend's addresses once it is deployed, so a redeploy keeps them.
@@ -96,16 +97,9 @@ main() {
     exit 1
   fi
 
-  # The report builder runs the same code; ship it with every backend deploy once it exists.
-  if stack_exists "$REPORTS_STACK"; then
-    echo "==> Report builder ($REPORTS_STACK)"
-    ./infra/deploy-reports.sh
-  fi
-  # So does the agenda parser.
-  if stack_exists "$AI_STACK"; then
-    echo "==> Agenda parser ($AI_STACK)"
-    ./infra/deploy-ai.sh
-  fi
+  # The report builder and the agenda parser run the same code; ship it with every backend deploy.
+  echo "==> Report builder and agenda parser"
+  ./infra/deploy-functions.sh
 
   echo
   echo "API:  $api_url"

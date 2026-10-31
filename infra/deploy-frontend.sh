@@ -10,20 +10,18 @@ main() {
   source infra/common.sh
 
   stack_exists "$BACKEND_STACK" || { echo "Stack $BACKEND_STACK not found; run make deploy-backend first." >&2; exit 1; }
-  require_auth_stack
   api_base_url="$(output "$BACKEND_STACK" ApiBaseUrl)"
-  # Paste an agenda appears in the app once the parser is deployed (make deploy-ai).
-  parser_url=""
-  stack_exists "$AI_STACK" && parser_url="$(output "$AI_STACK" ParserUrl)"
+  # Cognito and the agenda parser are Terraform (infra/); their outputs live in HCP Terraform.
+  parser_url="$(tf_output parser_url)"
 
   echo "==> [1/6] Build the frontend (API: $api_base_url)"
   (cd frontend && npm ci && \
     VITE_API_URL="$api_base_url" \
     VITE_PARSER_URL="$parser_url" \
-    COGNITO_USER_POOL_ID="$(output "$AUTH_STACK" UserPoolId)" \
-    COGNITO_CLIENT_ID="$(output "$AUTH_STACK" UserPoolClientId)" \
-    COGNITO_DOMAIN="$(output "$AUTH_STACK" Domain)" \
-    COGNITO_GOOGLE_ENABLED="$(output "$AUTH_STACK" GoogleEnabled)" \
+    COGNITO_USER_POOL_ID="$(tf_output cognito_user_pool_id)" \
+    COGNITO_CLIENT_ID="$(tf_output cognito_client_id)" \
+    COGNITO_DOMAIN="$(tf_output cognito_domain)" \
+    COGNITO_GOOGLE_ENABLED="$(tf_output cognito_google_enabled)" \
     npm run build)
 
   echo "==> [2/6] S3 bucket + CloudFront ($FRONTEND_STACK)"
@@ -42,8 +40,8 @@ main() {
   echo "==> [3/6] Allow the frontend to call the API ($BACKEND_STACK)"
   update_backend_cors
 
-  echo "==> [4/6] Allow Cognito to redirect back to the frontend ($AUTH_STACK)"
-  update_auth_urls
+  echo "==> [4/6] Check that Cognito and the parser know the frontend's addresses"
+  check_app_urls
 
   echo "==> [5/6] Upload to s3://$bucket"
   # Hashed assets never change, so browsers may cache them forever; everything else is revalidated.

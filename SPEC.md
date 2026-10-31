@@ -220,7 +220,7 @@ Built with shadcn/ui components; routing with `react-router`.
 - The meetings top bar shows the user's initial (name and email on hover; links to `/profile`) and a **Sign out** button.
 - **Profile** (`/profile`): a back arrow to `/home`, the user's initial, name and email, then one card per change. The changes go to Cognito's user API directly with the access token (scope `aws.cognito.signin.user.admin`); the app then refreshes the tokens, and the backend copies the new name and email from the ID token on the next request.
   - **Name**: prefilled; **Save name** is enabled once it changes.
-  - **Email**: a new email, then the code Cognito sends to it (**Verify email**, **Send a new code**, **Cancel**). The email changes only after the code is entered (`AttributesRequireVerificationBeforeUpdate` in `infra/auth.yaml`).
+  - **Email**: a new email, then the code Cognito sends to it (**Verify email**, **Send a new code**, **Cancel**). The email changes only after the code is entered (`attributes_require_verification_before_update` in `infra/auth.tf`).
   - **Password**: current password, new password (min 8 characters), confirm (must match). A wrong current password shows "Current password is wrong".
   - Google accounts cannot edit anything here (Google sets the name and email at every sign-in); the page says so instead of showing the forms.
   - A **Sign out** button at the bottom.
