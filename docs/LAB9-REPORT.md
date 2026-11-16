@@ -131,7 +131,7 @@ awake. On GCP:
 
 | Demo | How | Result |
 |---|---|---|
-| **BigQuery** | `lab9/bigquery_payments.sql`: trips and money per payment type, Chicago taxi trips 2023 (public dataset, sandbox). The Lab 8 question on other data | bytes processed: _(fill in)_ |
+| **BigQuery** | `lab9/bigquery_payments.sql`: trips and money per payment type, Chicago taxi trips 2023 (public dataset, sandbox). The Lab 8 question on other data | **7.01 GB** processed (dry run: 7,007,864,543 bytes). Four columns of a ~75 GB table, because only the columns named are read. $0 within the free 1 TiB a month, ≈ $0.04 at $6.25/TiB beyond it |
 | **Looker Studio** | `lab9/bigquery_for_looker.sql` creates `spry_lab9.taxi_payments_monthly`. Looker Studio → BigQuery source → time series: month × trips, breakdown by `payment_type` | `looker.png` |
 | **Document AI / Vision OCR** | Document AI → Create processor → **Enterprise Document OCR** (us) → upload one PDF (a receipt or a handwritten page) | `ocr.png` |
 | Gemini on Vertex AI (optional) | Vertex AI Studio → the Lab 6 agenda prompt (`backend/app/ai/agenda.py`) with one test input | |
