@@ -7,6 +7,9 @@ app_urls = [
   "http://localhost:5173",
   "http://localhost:3000",
   "https://d7qg7pyr3qt78.cloudfront.net",
+  # Lab 9: the same app on Google Cloud (Firebase Hosting, gcp/); sign-in stays on Cognito.
+  "https://spry-voloskyi-2026-app.web.app",
+  "https://spry-voloskyi-2026-app.firebaseapp.com",
 ]
 
 google_client_id = "973101215476-jj7ttgnls5ok504k6ja8vsp6clpr1fv5.apps.googleusercontent.com"
