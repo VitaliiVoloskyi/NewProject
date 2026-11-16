@@ -5,7 +5,7 @@
 | `gcp/` Terraform + ADR | `gcp/*.tf`, `gcp/bootstrap/main.tf`, [ADR 0008](adr/0008-google-cloud.md), pull request: <https://github.com/VitaliiVoloskyi/NewProject/pull/3> |
 | Spry on Google Cloud | <https://spry-voloskyi-2026-app.web.app> · `/api/health` reads the database (`SELECT 1` on Cloud SQL) |
 | Cost table | Part 3 below |
-| Demo screenshots | `lab9/screenshots/`: BigQuery, Looker Studio, OCR |
+| Demo screenshots | `lab9/screenshots/bigquery.png`, `looker.png`, `ocr.png` (Document AI Enterprise OCR on a 2-page PDF report) |
 
 ## Part 0: the project
 
