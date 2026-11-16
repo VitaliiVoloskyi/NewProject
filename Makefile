@@ -10,7 +10,8 @@ s ?=
 	dev-backend dev-frontend install clean deploy deploy-backend deploy-frontend deploy-ci \
 	add-domain remove-domain destroy destroy-backend destroy-frontend infra-lint infra-init infra-plan \
 	infra-output auth-env deploy-functions verify-recipients report-local report-now report-logs \
-	llm-hello parse parse-eval parser-logs
+	llm-hello parse parse-eval parser-logs \
+	gcp-lint gcp-plan gcp-output gcp-deploy gcp-deploy-backend gcp-deploy-frontend gcp-db-stop gcp-db-start gcp-logs
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
@@ -168,3 +169,40 @@ infra-lint: ## Lint the CloudFormation templates and the Terraform files
 	uvx cfn-lint infra/*.yaml
 	terraform fmt -check -recursive infra
 	$(TF) init -backend=false -input=false >/dev/null && $(TF) validate
+
+# ---- Google Cloud (Lab 9): Spry's core on Cloud Run + Cloud SQL + Firebase Hosting ------------------
+# gcp/*.tf is its own HCP Terraform workspace (spry-gcp): pull request -> plan, merge -> apply.
+# The scripts use your own Google login (gcloud auth login, application-default login); no keys.
+GCP_TF := terraform -chdir=gcp
+GCP_ENV := COGNITO_USER_POOL_ID="$(COGNITO_USER_POOL_ID)" COGNITO_CLIENT_ID="$(COGNITO_CLIENT_ID)" \
+	COGNITO_DOMAIN="$(COGNITO_DOMAIN)" COGNITO_GOOGLE_ENABLED="$(COGNITO_GOOGLE_ENABLED)" \
+	VITE_PARSER_URL="$(VITE_PARSER_URL)"
+
+gcp-lint: ## Format-check and validate gcp/ and gcp/bootstrap
+	terraform fmt -check -recursive gcp
+	terraform -chdir=gcp/bootstrap init -backend=false -input=false >/dev/null && terraform -chdir=gcp/bootstrap validate
+
+gcp-plan: ## Speculative plan of gcp/*.tf in HCP Terraform (changes nothing)
+	@test -d gcp/.terraform || $(GCP_TF) init -input=false >/dev/null
+	$(GCP_TF) plan
+
+gcp-output: ## Show the outputs of gcp/*.tf (site URLs, Cloud Run URL, image repository)
+	@test -d gcp/.terraform || $(GCP_TF) init -input=false >/dev/null
+	$(GCP_TF) output
+
+gcp-deploy: gcp-deploy-backend gcp-deploy-frontend ## Deploy the API, then the frontend, to Google Cloud
+
+gcp-deploy-backend: ## Build the API image (--target cloudrun), push to Artifact Registry, update Cloud Run
+	@./gcp/deploy-backend.sh
+
+gcp-deploy-frontend: env ## Build the frontend and deploy it to Firebase Hosting (/api/** -> Cloud Run)
+	@$(GCP_ENV) ./gcp/deploy-frontend.sh
+
+gcp-db-stop: ## Stop the Cloud SQL instance (compute stops billing; the 10 GB disk still bills)
+	@bash -c 'source gcp/common.sh; gc sql instances patch "$$DB_INSTANCE" --activation-policy NEVER'
+
+gcp-db-start: ## Start the Cloud SQL instance again (takes a minute or two)
+	@bash -c 'source gcp/common.sh; gc sql instances patch "$$DB_INSTANCE" --activation-policy ALWAYS'
+
+gcp-logs: ## Show the last hour of the Cloud Run API's logs
+	@bash -c 'source gcp/common.sh; gc logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$$API_SERVICE" --freshness 1h --order asc --format "value(timestamp,textPayload)"'

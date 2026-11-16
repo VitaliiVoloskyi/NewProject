@@ -26,6 +26,16 @@ COPY . .
 ENTRYPOINT ["python", "-m", "awslambdaric"]
 CMD ["app.reports.lambda_handler.handler"]
 
+# cloudrun (--target cloudrun)  the API on Google Cloud Run (gcp/). No Lambda adapter: Cloud Run
+#                               sends plain HTTP to the port in $PORT (8080), so uvicorn serves it
+#                               directly. The same image runs locally with `docker run -p 8080:8080`.
+FROM app AS cloudrun
+
+ENV PORT=8080
+EXPOSE 8080
+ENTRYPOINT []
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips '*'"]
+
 FROM app AS api
 
 # Lets the unchanged uvicorn app run on AWS Lambda; inert everywhere else.
