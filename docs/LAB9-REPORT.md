@@ -5,7 +5,7 @@
 | `gcp/` Terraform + ADR | `gcp/*.tf`, `gcp/bootstrap/main.tf`, [ADR 0008](adr/0008-google-cloud.md), pull request: <https://github.com/VitaliiVoloskyi/NewProject/pull/3> |
 | Spry on Google Cloud | <https://spry-voloskyi-2026-app.web.app> · `/api/health` reads the database (`SELECT 1` on Cloud SQL) |
 | Cost table | Part 3 below |
-| Demo screenshots | `lab9/screenshots/`: BigQuery, Looker Studio, OCR |
+| Demo screenshots | `lab9/screenshots/bigquery.png`, `looker.png`, `ocr.png` (Document AI Enterprise OCR on a 2-page PDF report) |
 
 ## Part 0: the project
 
@@ -131,9 +131,9 @@ awake. On GCP:
 
 | Demo | How | Result |
 |---|---|---|
-| **BigQuery** | `lab9/bigquery_payments.sql`: trips and money per payment type, Chicago taxi trips 2023 (public dataset, sandbox). The Lab 8 question on other data | **7.01 GB** processed (dry run: 7,007,864,543 bytes). Four columns of a ~75 GB table, because only the columns named are read. $0 within the free 1 TiB a month, ≈ $0.04 at $6.25/TiB beyond it |
-| **Looker Studio** | `lab9/bigquery_for_looker.sql` creates `spry_lab9.taxi_payments_monthly`. Looker Studio → BigQuery source → time series: month × trips, breakdown by `payment_type` | `looker.png` |
-| **Document AI / Vision OCR** | Document AI → Create processor → **Enterprise Document OCR** (us) → upload one PDF (a receipt or a handwritten page) | `ocr.png` |
+| **BigQuery** | `lab9/bigquery_payments.sql`: trips and money per payment type, Chicago taxi trips 2023 (public dataset, sandbox). The Lab 8 question on other data | **7.01 GB** processed (job: 7,007,864,543 bytes, 7,008,681,984 billed, no cache, 0.7 s). Credit card 40.8 % of 6.43 M trips, cash 30.0 %, mobile 14.8 % (`lab9/results/bigquery_payments.txt`). Four columns of a ~75 GB table, because only the columns named are read. $0 within the free 1 TiB a month, ≈ $0.04 at $6.25/TiB beyond it |
+| **Looker Studio** | `lab9/bigquery_for_looker.sql` creates `spry_lab9.taxi_payments_monthly`. Looker Studio → BigQuery source → time series: month × trips, breakdown by `payment_type` | table created (84 rows: 12 months × 7 types); chart `looker.png` |
+| **Vision OCR** | `gcloud ml vision detect-document` on Google's handwritten sample `gs://cloud-samples-data/vision/handwriting_image.png`; in the console: Document AI → Create processor → **Enterprise Document OCR** → upload one PDF | read **"Google Cloud Platform"**, 3 words, mean confidence 0.78 (`lab9/results/vision_ocr.txt`); `ocr.png` |
 | Gemini on Vertex AI (optional) | Vertex AI Studio → the Lab 6 agenda prompt (`backend/app/ai/agenda.py`) with one test input | |
 
 ### When a specialised service beats a general model
